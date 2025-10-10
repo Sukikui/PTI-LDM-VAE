@@ -1,0 +1,45 @@
+# VisualStudioCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+**/.vscode
+
+# JetBrains
+.idea/
+
+# Claude
+.claude/
+
+# Gemini
+.gemini/
+GEMINI.md
+
+# Cadence
+.cadence/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Image & segmentation data files
+*.nii.gz
+*.nii
+*.npz
+*.pkl
+*.b2nd
+*.tif
+
+# Model checkpoint files
+*.pth
+*.ckpt
+*.ptEn
+
+# Personal files and directories
+TODO.md
