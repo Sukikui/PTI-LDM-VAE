@@ -1,4 +1,4 @@
-name: pti-ldm-vae
+name: PTI-LDM-VAE
 channels:
   - pytorch
   - conda-forge
