@@ -12,6 +12,7 @@
 
 # Claude
 .claude/
+CLAUDE.md
 
 # Gemini
 .gemini/
