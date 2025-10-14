@@ -313,3 +313,113 @@ Then open http://localhost:6006 in your browser.
 - Training checkpoints include optimizer states for resuming
 - Best models are saved based on validation loss
 - Images are rotated 90° counterclockwise (k=3) for correct orientation
+
+---
+
+## Analysis Scripts
+
+### analyze_umap.py
+
+Analyze VAE latent space using UMAP dimensionality reduction.
+
+**Usage (single group):**
+
+```bash
+python scripts/analyze_umap.py \
+  --vae-weights runs/vae_experiment/trained_weights/autoencoder_epoch73.pth \
+  --config-file config/config_train_16g_cond.json \
+  --folder-group1 data/edente/ \
+  --output-dir analysis/umap_edente/ \
+  --max-images 1000 \
+  --color-by-exam
+```
+
+**Usage (two-group comparison):**
+
+```bash
+python scripts/analyze_umap.py \
+  --vae-weights runs/vae_experiment/trained_weights/autoencoder_epoch73.pth \
+  --config-file config/config_train_16g_cond.json \
+  --folder-group1 data/edente/ \
+  --folder-group2 data/dente/ \
+  --output-dir analysis/umap_comparison/ \
+  --max-images 1000 \
+  --color-by-exam \
+  --n-neighbors 40 \
+  --min-dist 0.5
+```
+
+**Arguments:**
+- `--vae-weights`: Path to trained VAE weights (required)
+- `--config-file`: Path to config JSON file (required)
+- `--folder-group1`: Path to first image group (required)
+- `--folder-group2`: Path to second image group (optional)
+- `--output-dir`: Output directory for results (required)
+- `--max-images`: Maximum images per group (default: 1000)
+- `--patch-size`: Image patch size H W (default: 256 256)
+- `--color-by-exam`: Color points by exam ID instead of group
+- `--n-neighbors`: UMAP n_neighbors parameter (default: 40)
+- `--min-dist`: UMAP min_dist parameter (default: 0.5)
+- `--seed`: Random seed (default: 42)
+
+**Outputs:**
+- `umap_projection.png` - 2D visualization of latent space
+- `color_legend.txt` - Color mapping for exams (if --color-by-exam)
+- `distance_metrics.txt` - Distance statistics per exam (two-group mode)
+- `exams_sorted_by_distance.txt` - Exams sorted by latent distance (two-group mode)
+
+---
+
+### analyze_tsne.py
+
+Analyze VAE latent space using t-SNE dimensionality reduction.
+
+**Usage (single group):**
+
+```bash
+python scripts/analyze_tsne.py \
+  --vae-weights runs/vae_experiment/trained_weights/autoencoder_epoch73.pth \
+  --config-file config/config_train_16g_cond.json \
+  --folder-group1 data/edente/ \
+  --output-dir analysis/tsne_edente/ \
+  --max-images 1000 \
+  --color-by-exam
+```
+
+**Usage (two-group comparison):**
+
+```bash
+python scripts/analyze_tsne.py \
+  --vae-weights runs/vae_experiment/trained_weights/autoencoder_epoch73.pth \
+  --config-file config/config_train_16g_cond.json \
+  --folder-group1 data/edente/ \
+  --folder-group2 data/dente/ \
+  --output-dir analysis/tsne_comparison/ \
+  --max-images 1000 \
+  --perplexity 30
+```
+
+**Arguments:**
+- `--vae-weights`: Path to trained VAE weights (required)
+- `--config-file`: Path to config JSON file (required)
+- `--folder-group1`: Path to first image group (required)
+- `--folder-group2`: Path to second image group (optional)
+- `--output-dir`: Output directory for results (required)
+- `--max-images`: Maximum images per group (default: 1000)
+- `--patch-size`: Image patch size H W (default: 256 256)
+- `--color-by-exam`: Color points by exam ID instead of group
+- `--perplexity`: t-SNE perplexity parameter (default: 30)
+- `--seed`: Random seed (default: 42)
+
+**Outputs:**
+- `tsne_projection.png` - 2D visualization of latent space
+- `color_legend.txt` - Color mapping for exams (if --color-by-exam)
+- `distance_metrics.txt` - Distance statistics per exam (two-group mode)
+- `exams_sorted_by_distance.txt` - Exams sorted by latent distance (two-group mode)
+
+**Notes:**
+- Image filenames should follow the pattern: `<slice_number>_<exam_id>.tif`
+- Example: `0001_patient_ABC_session1.tif`
+- The exam ID (everything after first underscore) is used for grouping and coloring
+- Analysis scripts use PCA (50 components) before UMAP/t-SNE for efficiency
+- t-SNE computation may take several minutes for large datasets

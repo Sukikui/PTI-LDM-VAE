@@ -26,7 +26,7 @@ couleur_par_examen = True  # True = couleurs par examen, False = bleu/orange
 
 # === CONFIGURATION ===
 vae_weights = "12_06_2025_vae_pour_ldm_edente_edente/trained_weights/autoencoder_epoch73.pth"
-config_file = "config/config_train_16g_cond.json"
+config_file = "../config/config_train_16g_cond.json"
 folder_edentee = "data_cs_1_dm_encastre_tif_32_bits_22_05_2025/edente"
 folder_dentee = "data_cs_1_dm_encastre_tif_32_bits_22_05_2025/dente"
 folder_output = "umap_comparatif_edentee_dentee_par_examen"

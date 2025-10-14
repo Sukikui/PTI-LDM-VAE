@@ -38,7 +38,7 @@ input_dir = Path("data_cs_1_dm_encastre_tif_04_06_2025_lot_inference_res_150/den
 description = "test_dente_reu_13_06_2025"
 
 # Fichiers de config
-environment_file = Path("./config/environment_tif.json")
+environment_file = Path("../config/environment_tif.json")
 config_file = Path("./config/config_train_16g.json")
 
 # ===========================================================================
