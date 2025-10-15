@@ -1,17 +1,17 @@
-import os
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-from glob import glob
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
-from monai.config import print_config
-from monai.transforms import Compose, LoadImage, EnsureChannelFirst, Resize, EnsureType
-from utils_tif_no_augment import LocalNormalizeByMask, define_instance
 import json
-from collections import defaultdict
+import os
+from glob import glob
+
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from monai.config import print_config
+from monai.transforms import Compose, EnsureChannelFirst, EnsureType, LoadImage, Resize
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from utils_tif_no_augment import LocalNormalizeByMask, define_instance
 
 # === MODES DE VISU
 couleur_par_examen = False  # True = couleurs par examen, False = bleu/orange
@@ -31,7 +31,7 @@ os.makedirs(folder_output, exist_ok=True)
 
 # === Chargement du modèle
 print_config()
-args = type('args', (object,), {})()
+args = type("args", (object,), {})()
 with open(config_file) as f:
     config_dict = json.load(f)
 for k, v in config_dict.items():
@@ -41,19 +41,21 @@ vae.load_state_dict(torch.load(vae_weights, map_location=device))
 vae.eval()
 
 # === Prétraitement
-transforms = Compose([
-    LoadImage(image_only=True),
-    EnsureChannelFirst(),
-    Resize(patch_size),
-    LocalNormalizeByMask(),
-    EnsureType(dtype=torch.float32)
-])
+transforms = Compose(
+    [
+        LoadImage(image_only=True),
+        EnsureChannelFirst(),
+        Resize(patch_size),
+        LocalNormalizeByMask(),
+        EnsureType(dtype=torch.float32),
+    ]
+)
 
 # === Chargement édentées
 paths_edentee = sorted(glob(os.path.join(folder_edentee, "*.tif")))[:max_images]
 exams_edentee = [os.path.basename(p).split("_", 1)[1] for p in paths_edentee]
 unique_exams = sorted(set(exams_edentee))
-colormap = cm.get_cmap('tab20', len(unique_exams))
+colormap = cm.get_cmap("tab20", len(unique_exams))
 exam_to_color = {exam: colormap(i) for i, exam in enumerate(unique_exams)}
 
 if couleur_par_examen:
@@ -69,7 +71,7 @@ with torch.no_grad():
         z = vae.encode_stage_2_inputs(img).cpu().flatten(start_dim=1)
         Z_edentee.append(z)
         exam = os.path.basename(path).split("_", 1)[1]
-        color = exam_to_color[exam] if couleur_par_examen else 'tab:blue'
+        color = exam_to_color[exam] if couleur_par_examen else "tab:blue"
         colors_edentee.append(color)
         ids_edentee.append(exam)
 
@@ -85,13 +87,12 @@ with torch.no_grad():
         z = vae.encode_stage_2_inputs(img).cpu().flatten(start_dim=1)
         Z_dentee.append(z)
         exam = os.path.basename(path).split("_", 1)[1]
-        color = exam_to_color.get(exam, "#cccccc") if couleur_par_examen else 'tab:red'
+        color = exam_to_color.get(exam, "#cccccc") if couleur_par_examen else "tab:red"
         colors_dentee.append(color)
         ids_dentee.append(exam)
 
 Z_dentee = torch.cat(Z_dentee, dim=0).numpy()
 print(f"🔹 {len(Z_dentee)} vecteurs dentées encodés.")
-
 
 
 # === PCA + t-SNE combiné
@@ -102,18 +103,18 @@ Z_dentee_pca = pca.transform(Z_dentee)
 Z_combined = [Z_edentee_pca, Z_dentee_pca]
 
 Z_tsne_input = np.concatenate(Z_combined)
-Z_tsne = TSNE(n_components=2, perplexity=30, init='pca', random_state=42).fit_transform(Z_tsne_input)
+Z_tsne = TSNE(n_components=2, perplexity=30, init="pca", random_state=42).fit_transform(Z_tsne_input)
 
 # === Découpage
-Z_tsne_edentee = Z_tsne[:len(Z_edentee)]
-Z_tsne_dentee = Z_tsne[len(Z_edentee):len(Z_edentee)+len(Z_dentee)]
+Z_tsne_edentee = Z_tsne[: len(Z_edentee)]
+Z_tsne_dentee = Z_tsne[len(Z_edentee) : len(Z_edentee) + len(Z_dentee)]
 
 # === Affichage
 plt.figure(figsize=(10, 8))
 for i, (x, y) in enumerate(Z_tsne_edentee):
-    plt.scatter(x, y, s=30, color=colors_edentee[i], marker='o', alpha=0.6)
+    plt.scatter(x, y, s=30, color=colors_edentee[i], marker="o", alpha=0.6)
 for i, (x, y) in enumerate(Z_tsne_dentee):
-    plt.scatter(x, y, s=30, color=colors_dentee[i], marker='^', alpha=0.6)
+    plt.scatter(x, y, s=30, color=colors_dentee[i], marker="^", alpha=0.6)
 
 # === Titre
 titre = "t-SNE : édentées (o), dentées (^)"

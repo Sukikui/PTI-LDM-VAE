@@ -38,6 +38,7 @@ wheels/
 *.tif
 
 # Model checkpoint files
+*.pt
 *.pth
 *.ckpt
 *.ptEn

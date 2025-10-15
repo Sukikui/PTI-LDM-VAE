@@ -1,19 +1,15 @@
-"""
-Data augmentation utilities for medical image training.
-"""
+"""Data augmentation utilities for medical image training."""
 
 try:
     import albumentations as A
-except ImportError:
+except ImportError as e:
     raise ImportError(
-        "albumentations is required for data augmentation. "
-        "Install it with: pip install albumentations"
-    )
+        "albumentations is required for data augmentation. Install it with: pip install albumentations"
+    ) from e
 
 
 def get_albumentations_transform():
-    """
-    Get albumentations transform for medical image augmentation.
+    """Get albumentations transform for medical image augmentation.
 
     Returns:
         albumentations.Compose: Augmentation pipeline that applies the same
@@ -33,25 +29,14 @@ def get_albumentations_transform():
         >>> # For paired images (LDM)
         >>> augmented = transform(image=image, condition_image=condition)
     """
-    transform = A.Compose([
-        # Geometric augmentations
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.5),
-        A.RandomRotate90(p=0.5),
-        A.ShiftScaleRotate(
-            shift_limit=0.1,
-            scale_limit=0.1,
-            rotate_limit=15,
-            border_mode=0,
-            p=0.5
-        ),
-        A.ElasticTransform(
-            alpha=50,
-            sigma=5,
-            alpha_affine=5,
-            border_mode=0,
-            p=0.3
-        ),
-    ], additional_targets={'condition_image': 'image'})
-
-    return transform
+    return A.Compose(
+        [
+            # Geometric augmentations
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.5),
+            A.ElasticTransform(alpha=50, sigma=5, alpha_affine=5, border_mode=0, p=0.3),
+        ],
+        additional_targets={"condition_image": "image"},
+    )

@@ -1,5 +1,4 @@
-"""
-Image comparison and metrics computation for evaluating generated medical images.
+"""Image comparison and metrics computation for evaluating generated medical images.
 
 This module provides comprehensive metrics for comparing ground truth and generated images:
 - Reconstruction metrics: MSE, SSIM, PSNR
@@ -11,27 +10,24 @@ This module provides comprehensive metrics for comparing ground truth and genera
 import os
 import random
 import traceback
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 import pandas as pd
+import tifffile as tiff
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from matplotlib import pyplot as plt
-from scipy.spatial.distance import cityblock, chebyshev, euclidean, minkowski
+from scipy.spatial.distance import chebyshev, cityblock, euclidean, minkowski
 from skimage.metrics import structural_similarity as ssim
 from sklearn.metrics import mean_squared_error
 from torchvision import models
 from torchvision.models import VGG16_Weights
-import tifffile as tiff
 
 
 class ImageComparison:
-    """
-    Comprehensive image comparison tool for medical image analysis.
+    """Comprehensive image comparison tool for medical image analysis.
 
     Computes various metrics between ground truth and generated images,
     including reconstruction quality, segmentation accuracy, and morphological
@@ -41,22 +37,23 @@ class ImageComparison:
         apply_otsu_mask: Whether to apply Otsu thresholding for masking (default: False)
     """
 
-    def __init__(self, apply_otsu_mask: bool = False):
+    def __init__(self, apply_otsu_mask: bool = False) -> None:
         self.apply_otsu_mask = apply_otsu_mask
         self.weights = VGG16_Weights.IMAGENET1K_V1
         self.model = models.vgg16(weights=self.weights).features
         self.model.eval()
-        self.transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        self.worst_metrics: Dict[str, Tuple[float, Optional[np.ndarray]]] = {}
+        self.transform = transforms.Compose(
+            [
+                transforms.ToPILImage(),
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
+        self.worst_metrics: dict[str, tuple[float, np.ndarray | None]] = {}
 
     def _to_2d(self, img: np.ndarray) -> np.ndarray:
-        """
-        Convert image to 2D array by squeezing dimensions.
+        """Convert image to 2D array by squeezing dimensions.
 
         Args:
             img: Input image array
@@ -75,9 +72,8 @@ class ImageComparison:
             raise ValueError(f"Image must be 2D after squeeze, got shape {img.shape}")
         return img.astype(np.float32)
 
-    def get_image_pair(self, image_path: str) -> Tuple[np.ndarray, np.ndarray, None]:
-        """
-        Load ground truth and prediction image pair.
+    def get_image_pair(self, image_path: str) -> tuple[np.ndarray, np.ndarray, None]:
+        """Load ground truth and prediction image pair.
 
         Expects directory structure with 'edente' (GT) and 'edente_synth' (prediction)
         folders containing matching filenames.
@@ -118,13 +114,9 @@ class ImageComparison:
         return gt, pred, None
 
     def get_all_files_from_folders(
-        self,
-        folder_paths: List[str],
-        file_selection_mode: str = "all",
-        n: Optional[int] = None
-    ) -> List[str]:
-        """
-        Get list of file paths from folders with optional sampling.
+        self, folder_paths: list[str], file_selection_mode: str = "all", n: int | None = None
+    ) -> list[str]:
+        """Get list of file paths from folders with optional sampling.
 
         Args:
             folder_paths: List of folder paths to search
@@ -149,8 +141,7 @@ class ImageComparison:
         return all_file_paths
 
     def generate_clean_mask(self, image: np.ndarray, kind: str = "gt") -> np.ndarray:
-        """
-        Generate binary mask from image.
+        """Generate binary mask from image.
 
         For GT: non-zero pixels become 1
         For prediction: pixels outside [-0.2, 0.2] become 1, with morphological cleaning
@@ -176,14 +167,8 @@ class ImageComparison:
 
         return (mask * 255).astype(np.uint8)
 
-    def dice_coefficient(
-        self,
-        prediction: np.ndarray,
-        gt: np.ndarray,
-        smooth: float = 1e-6
-    ) -> float:
-        """
-        Compute Dice coefficient between prediction and ground truth masks.
+    def dice_coefficient(self, prediction: np.ndarray, gt: np.ndarray, smooth: float = 1e-6) -> float:
+        """Compute Dice coefficient between prediction and ground truth masks.
 
         Args:
             prediction: Predicted image
@@ -200,11 +185,10 @@ class ImageComparison:
         intersection = np.sum(image1_flat * image2_flat)
         union = np.sum(image1_flat) + np.sum(image2_flat)
 
-        return (2. * intersection + smooth) / (union + smooth)
+        return (2.0 * intersection + smooth) / (union + smooth)
 
     def iou(self, prediction: np.ndarray, gt: np.ndarray) -> float:
-        """
-        Compute Intersection over Union (IoU) between prediction and GT masks.
+        """Compute Intersection over Union (IoU) between prediction and GT masks.
 
         Args:
             prediction: Predicted image
@@ -225,8 +209,7 @@ class ImageComparison:
         return intersection / union
 
     def extract_features(self, image: np.ndarray) -> torch.Tensor:
-        """
-        Extract VGG16 features from image for perceptual comparison.
+        """Extract VGG16 features from image for perceptual comparison.
 
         Note: Converts float32 to uint8 for VGG16 compatibility.
 
@@ -241,18 +224,12 @@ class ImageComparison:
         image_tensor = self.transform(image_rgb).unsqueeze(0)
 
         with torch.no_grad():
-            features = self.model(image_tensor).view(-1)
-
-        return features
+            return self.model(image_tensor).view(-1)
 
     def align_images_by_bottom_20_center(
-        self,
-        image1: np.ndarray,
-        image2: np.ndarray,
-        verbosity: bool = False
+        self, image1: np.ndarray, image2: np.ndarray, verbosity: bool = False
     ) -> np.ndarray:
-        """
-        Align image2 to image1 based on bottom 20% center alignment.
+        """Align image2 to image1 based on bottom 20% center alignment.
 
         Args:
             image1: Reference image
@@ -280,8 +257,7 @@ class ImageComparison:
             if len(white_pixel_indices) == 0:
                 return None
 
-            center_x = int(np.mean(white_pixel_indices[:, 1]))
-            return center_x
+            return int(np.mean(white_pixel_indices[:, 1]))
 
         center1 = get_bottom_20_center(image1)
         center2 = get_bottom_20_center(image2)
@@ -303,8 +279,7 @@ class ImageComparison:
         return aligned_image2
 
     def straighten_image(self, image: np.ndarray, verbosity: bool = False) -> np.ndarray:
-        """
-        Rotate image to straighten the main object using ellipse fitting.
+        """Rotate image to straighten the main object using ellipse fitting.
 
         Args:
             image: Input image
@@ -330,23 +305,12 @@ class ImageComparison:
                 (h, w) = image.shape[:2]
                 center = (w // 2, h // 2)
                 M = cv2.getRotationMatrix2D(center, angle, 1.0)
-                rotated_image = cv2.warpAffine(
-                    image, M, (w, h),
-                    flags=cv2.INTER_CUBIC,
-                    borderMode=cv2.BORDER_REPLICATE
-                )
-                return rotated_image
-            else:
-                raise ValueError("Not enough points to fit an ellipse.")
-        else:
-            raise ValueError("No contours found in the image.")
+                return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+            raise ValueError("Not enough points to fit an ellipse.")
+        raise ValueError("No contours found in the image.")
 
-    def compute_object_dimensions(
-        self,
-        binary_image: np.ndarray
-    ) -> Tuple[int, int, int, int]:
-        """
-        Compute height and widths of object at different vertical levels.
+    def compute_object_dimensions(self, binary_image: np.ndarray) -> tuple[int, int, int, int]:
+        """Compute height and widths of object at different vertical levels.
 
         Args:
             binary_image: Binary mask of object
@@ -372,19 +336,14 @@ class ImageComparison:
         middle_y = y + h // 2
         lower_third_y = y + 3 * h // 4
 
-        width_upper_third = np.sum(binary_image[upper_third_y, x:x+w] == 255)
-        width_middle = np.sum(binary_image[middle_y, x:x+w] == 255)
-        width_lower_third = np.sum(binary_image[lower_third_y, x:x+w] == 255)
+        width_upper_third = np.sum(binary_image[upper_third_y, x : x + w] == 255)
+        width_middle = np.sum(binary_image[middle_y, x : x + w] == 255)
+        width_lower_third = np.sum(binary_image[lower_third_y, x : x + w] == 255)
 
         return object_height, width_upper_third, width_middle, width_lower_third
 
-    def compute_height_width_metrics(
-        self,
-        gt_img: np.ndarray,
-        gen_img: np.ndarray
-    ) -> Dict[str, float]:
-        """
-        Compute normalized height and width metrics with absolute differences.
+    def compute_height_width_metrics(self, gt_img: np.ndarray, gen_img: np.ndarray) -> dict[str, float]:
+        """Compute normalized height and width metrics with absolute differences.
 
         Args:
             gt_img: Ground truth image
@@ -412,19 +371,18 @@ class ImageComparison:
         abs_width_lower_diff = abs(gt_width_lower - gen_width_lower)
 
         return {
-            'height_metric': height_metric,
-            'width_metric_upper': width_metric_upper,
-            'width_metric_middle': width_metric_middle,
-            'width_metric_lower': width_metric_lower,
-            'abs_height_diff': abs_height_diff,
-            'abs_width_upper_diff': abs_width_upper_diff,
-            'abs_width_middle_diff': abs_width_middle_diff,
-            'abs_width_lower_diff': abs_width_lower_diff
+            "height_metric": height_metric,
+            "width_metric_upper": width_metric_upper,
+            "width_metric_middle": width_metric_middle,
+            "width_metric_lower": width_metric_lower,
+            "abs_height_diff": abs_height_diff,
+            "abs_width_upper_diff": abs_width_upper_diff,
+            "abs_width_middle_diff": abs_width_middle_diff,
+            "abs_width_lower_diff": abs_width_lower_diff,
         }
 
     def calculate_psnr(self, gt_img: np.ndarray, gen_img: np.ndarray) -> float:
-        """
-        Calculate Peak Signal-to-Noise Ratio (PSNR).
+        """Calculate Peak Signal-to-Noise Ratio (PSNR).
 
         Args:
             gt_img: Ground truth image
@@ -435,19 +393,14 @@ class ImageComparison:
         """
         mse = mean_squared_error(gt_img, gen_img)
         if mse == 0:
-            return float('inf')
+            return float("inf")
         PIXEL_MAX = max(np.max(gt_img), np.max(gen_img))
-        psnr = 20 * np.log10(PIXEL_MAX / np.sqrt(mse))
-        return psnr
+        return 20 * np.log10(PIXEL_MAX / np.sqrt(mse))
 
     def compare_images_and_display_metrics(
-        self,
-        gt_img: np.ndarray,
-        gen_img: np.ndarray,
-        original_image: Optional[np.ndarray] = None
-    ) -> Dict[str, float]:
-        """
-        Compute comprehensive metrics between ground truth and generated image.
+        self, gt_img: np.ndarray, gen_img: np.ndarray, original_image: np.ndarray | None = None
+    ) -> dict[str, float]:
+        """Compute comprehensive metrics between ground truth and generated image.
 
         Args:
             gt_img: Ground truth image
@@ -478,9 +431,9 @@ class ImageComparison:
         cosine_similarity = nn.CosineSimilarity(dim=0)
         similarity_score = cosine_similarity(features_gen, features_gt).item()
         euclidean_distance = round(euclidean(features_gen, features_gt), 2)
-        manhattan_distance = cityblock(features_gen, features_gt)
-        chebyshev_distance = chebyshev(features_gen, features_gt)
-        minkowski_distance = minkowski(features_gen, features_gt, p=3)
+        cityblock(features_gen, features_gt)
+        chebyshev(features_gen, features_gt)
+        minkowski(features_gen, features_gt, p=3)
 
         height_width_metrics = self.compute_height_width_metrics(gt_img, gen_img)
 
@@ -493,14 +446,14 @@ class ImageComparison:
             "IoU": iou_value,
             "Cosine Similarity": similarity_score,
             "Euclidean Distance": euclidean_distance,
-            "Height Metric": height_width_metrics['height_metric'],
-            "Width Metric Upper": height_width_metrics['width_metric_upper'],
-            "Width Metric Middle": height_width_metrics['width_metric_middle'],
-            "Width Metric Lower": height_width_metrics['width_metric_lower'],
-            "Absolute Height Difference": height_width_metrics['abs_height_diff'],
-            "Absolute Width Upper Difference": height_width_metrics['abs_width_upper_diff'],
-            "Absolute Width Middle Difference": height_width_metrics['abs_width_middle_diff'],
-            "Absolute Width Lower Difference": height_width_metrics['abs_width_lower_diff']
+            "Height Metric": height_width_metrics["height_metric"],
+            "Width Metric Upper": height_width_metrics["width_metric_upper"],
+            "Width Metric Middle": height_width_metrics["width_metric_middle"],
+            "Width Metric Lower": height_width_metrics["width_metric_lower"],
+            "Absolute Height Difference": height_width_metrics["abs_height_diff"],
+            "Absolute Width Upper Difference": height_width_metrics["abs_width_upper_diff"],
+            "Absolute Width Middle Difference": height_width_metrics["abs_width_middle_diff"],
+            "Absolute Width Lower Difference": height_width_metrics["abs_width_lower_diff"],
         }
 
         # Track worst metrics
@@ -509,9 +462,17 @@ class ImageComparison:
                 self.worst_metrics[metric_name] = (value, original_image)
             else:
                 # Higher is better for these metrics
-                if metric_name in ["SSIM", "PSNR", "Dice Coefficient", "Cosine Similarity",
-                                  "Height Metric", "Width Metric Upper", "Width Metric Middle",
-                                  "Width Metric Lower", "IoU"]:
+                if metric_name in [
+                    "SSIM",
+                    "PSNR",
+                    "Dice Coefficient",
+                    "Cosine Similarity",
+                    "Height Metric",
+                    "Width Metric Upper",
+                    "Width Metric Middle",
+                    "Width Metric Lower",
+                    "IoU",
+                ]:
                     if value < self.worst_metrics[metric_name][0]:
                         self.worst_metrics[metric_name] = (value, original_image)
                 else:  # Lower is better
@@ -522,12 +483,11 @@ class ImageComparison:
 
     def count_outliers(
         self,
-        all_metrics: List[Dict[str, float]],
-        metrics_avg: Dict[str, float],
-        metrics_ci95: Dict[str, Tuple[float, float]]
-    ) -> Dict[str, Dict[str, int]]:
-        """
-        Count outliers using multiple methods (CI, IQR, Z-score).
+        all_metrics: list[dict[str, float]],
+        metrics_avg: dict[str, float],
+        metrics_ci95: dict[str, tuple[float, float]],
+    ) -> dict[str, dict[str, int]]:
+        """Count outliers using multiple methods (CI, IQR, Z-score).
 
         Args:
             all_metrics: List of metric dictionaries for all images
@@ -542,10 +502,10 @@ class ImageComparison:
             "outside_2_ci": {},
             "outside_3_ci": {},
             "outside_iqr": {},
-            "outside_z": {}
+            "outside_z": {},
         }
 
-        for key in metrics_avg.keys():
+        for key in metrics_avg:
             data = [m[key] for m in all_metrics]
             mean = metrics_avg[key]
             std_dev = np.std(data)
@@ -565,8 +525,12 @@ class ImageComparison:
 
             # CI outliers
             outliers_1 = np.sum([1 for m in all_metrics if (m[key] < ci_lower or m[key] > ci_upper)])
-            outliers_2 = np.sum([1 for m in all_metrics if (m[key] < mean - 2 * margin_of_error or m[key] > mean + 2 * margin_of_error)])
-            outliers_3 = np.sum([1 for m in all_metrics if (m[key] < mean - 3 * margin_of_error or m[key] > mean + 3 * margin_of_error)])
+            outliers_2 = np.sum(
+                [1 for m in all_metrics if (m[key] < mean - 2 * margin_of_error or m[key] > mean + 2 * margin_of_error)]
+            )
+            outliers_3 = np.sum(
+                [1 for m in all_metrics if (m[key] < mean - 3 * margin_of_error or m[key] > mean + 3 * margin_of_error)]
+            )
 
             outlier_counts["outside_1_ci"][key] = outliers_1
             outlier_counts["outside_2_ci"][key] = outliers_2
@@ -578,13 +542,12 @@ class ImageComparison:
 
     def plot_metric_distributions_with_ci(
         self,
-        all_metrics: List[Dict[str, float]],
-        metrics_avg: Dict[str, float],
-        metrics_ci95: Dict[str, Tuple[float, float]],
-        save_path: Optional[str] = None
-    ):
-        """
-        Plot distributions of all metrics with confidence intervals and outliers.
+        all_metrics: list[dict[str, float]],
+        metrics_avg: dict[str, float],
+        metrics_ci95: dict[str, tuple[float, float]],
+        save_path: str | None = None,
+    ) -> None:
+        """Plot distributions of all metrics with confidence intervals and outliers.
 
         Args:
             all_metrics: List of metric dictionaries
@@ -592,11 +555,9 @@ class ImageComparison:
             metrics_ci95: 95% confidence intervals
             save_path: Path to save plot (optional)
         """
-        exclude_metrics = ['Euclidean Distance', 'Manhattan Distance',
-                          'Chebyshev Distance', 'Minkowski Distance']
+        exclude_metrics = ["Euclidean Distance", "Manhattan Distance", "Chebyshev Distance", "Minkowski Distance"]
 
-        filtered_metrics = {key: value for key, value in metrics_avg.items()
-                           if key not in exclude_metrics}
+        filtered_metrics = {key: value for key, value in metrics_avg.items() if key not in exclude_metrics}
 
         num_metrics = len(filtered_metrics)
         num_cols = 3
@@ -610,7 +571,7 @@ class ImageComparison:
             mean = metrics_avg[key]
             ci_lower, ci_upper = metrics_ci95[key]
             std_dev = np.std(data)
-            margin_of_error = (ci_upper - ci_lower) / 2
+            (ci_upper - ci_lower) / 2
 
             # Z-score calculation
             z_scores = [(x - mean) / std_dev for x in data]
@@ -624,29 +585,27 @@ class ImageComparison:
             iqr_outliers = [x for x in data if x < lower_iqr or x > upper_iqr]
 
             ax = axes[idx]
-            ax.hist(data, bins=20, color='lightblue', edgecolor='black', alpha=0.7)
+            ax.hist(data, bins=20, color="lightblue", edgecolor="black", alpha=0.7)
 
             # Mean line
-            ax.axvline(mean, color='red', linestyle='--', label='Mean', lw=2)
+            ax.axvline(mean, color="red", linestyle="--", label="Mean", lw=2)
 
             # IQR boundaries
-            ax.axvline(lower_iqr, color='orange', linestyle='-', label='IQR Lower', lw=2)
-            ax.axvline(upper_iqr, color='orange', linestyle='-', label='IQR Upper', lw=2)
+            ax.axvline(lower_iqr, color="orange", linestyle="-", label="IQR Lower", lw=2)
+            ax.axvline(upper_iqr, color="orange", linestyle="-", label="IQR Upper", lw=2)
 
             # Z-score boundaries
-            ax.axvline(mean - 3 * std_dev, color='red', linestyle='-', label='Z-Score -3', lw=2)
-            ax.axvline(mean + 3 * std_dev, color='red', linestyle='-', label='Z-Score +3', lw=2)
+            ax.axvline(mean - 3 * std_dev, color="red", linestyle="-", label="Z-Score -3", lw=2)
+            ax.axvline(mean + 3 * std_dev, color="red", linestyle="-", label="Z-Score +3", lw=2)
 
             # Outliers
-            ax.scatter(iqr_outliers, [0] * len(iqr_outliers), color='orange',
-                      label='IQR Outliers', marker='o')
-            ax.scatter(z_outliers, [0] * len(z_outliers), color='red',
-                      label='Z-Score Outliers', marker='x')
+            ax.scatter(iqr_outliers, [0] * len(iqr_outliers), color="orange", label="IQR Outliers", marker="o")
+            ax.scatter(z_outliers, [0] * len(z_outliers), color="red", label="Z-Score Outliers", marker="x")
 
-            ax.set_title(f'Distribution of {key}', fontsize=12)
-            ax.set_xlabel(f'{key} values', fontsize=10)
-            ax.set_ylabel('Frequency', fontsize=10)
-            ax.legend(loc='upper left', fontsize=8)
+            ax.set_title(f"Distribution of {key}", fontsize=12)
+            ax.set_xlabel(f"{key} values", fontsize=10)
+            ax.set_ylabel("Frequency", fontsize=10)
+            ax.legend(loc="upper left", fontsize=8)
 
         # Remove empty subplots
         for i in range(num_metrics, len(axes)):
@@ -660,14 +619,13 @@ class ImageComparison:
 
     def process_all_images(
         self,
-        folder_paths: List[str],
+        folder_paths: list[str],
         file_selection_mode: str = "all",
-        n: Optional[int] = None,
+        n: int | None = None,
         verbose: bool = False,
-        save_csv: bool = False
-    ) -> Tuple[Dict[str, float], Dict[str, Tuple[float, float]]]:
-        """
-        Process all images and compute aggregate statistics.
+        save_csv: bool = False,
+    ) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
+        """Process all images and compute aggregate statistics.
 
         Args:
             folder_paths: List of folders containing images
@@ -681,11 +639,7 @@ class ImageComparison:
         """
         print("Processing images ...")
         all_metrics = []
-        all_file_paths = self.get_all_files_from_folders(
-            folder_paths,
-            file_selection_mode=file_selection_mode,
-            n=n
-        )
+        all_file_paths = self.get_all_files_from_folders(folder_paths, file_selection_mode=file_selection_mode, n=n)
         num_images = len(all_file_paths)
 
         # Counters for specific thresholds
@@ -696,10 +650,19 @@ class ImageComparison:
         exams_with_90_width_metric = 0
         exams_with_95_width_metric = 0
 
-        dimensions_df = pd.DataFrame(columns=[
-            "Image Path", "GT Height", "GT Width Upper", "GT Width Middle", "GT Width Lower",
-            "Gen Height", "Gen Width Upper", "Gen Width Middle", "Gen Width Lower"
-        ])
+        dimensions_df = pd.DataFrame(
+            columns=[
+                "Image Path",
+                "GT Height",
+                "GT Width Upper",
+                "GT Width Middle",
+                "GT Width Lower",
+                "Gen Height",
+                "Gen Width Upper",
+                "Gen Width Middle",
+                "Gen Width Lower",
+            ]
+        )
 
         for path in all_file_paths:
             try:
@@ -712,28 +675,32 @@ class ImageComparison:
                 # Straighten and align
                 rotated_gt = self.straighten_image(ground_truth, verbosity=verbose)
                 rotated_gen = self.straighten_image(prediction, verbosity=verbose)
-                realigned_gen = self.align_images_by_bottom_20_center(
-                    rotated_gt, rotated_gen, verbosity=verbose
-                )
+                realigned_gen = self.align_images_by_bottom_20_center(rotated_gt, rotated_gen, verbosity=verbose)
 
                 # Get dimensions
                 binary_gt = self.generate_clean_mask(rotated_gt, kind="gt")
                 binary_gen = self.generate_clean_mask(realigned_gen, kind="pred")
 
-                gt_height, gt_width_upper, gt_width_middle, gt_width_lower = \
-                    self.compute_object_dimensions(binary_gt)
-                gen_height, gen_width_upper, gen_width_middle, gen_width_lower = \
-                    self.compute_object_dimensions(binary_gen)
+                gt_height, gt_width_upper, gt_width_middle, gt_width_lower = self.compute_object_dimensions(binary_gt)
+                gen_height, gen_width_upper, gen_width_middle, gen_width_lower = self.compute_object_dimensions(
+                    binary_gen
+                )
 
-                row = [os.path.basename(path), gt_height, gt_width_upper,
-                      gt_width_middle, gt_width_lower, gen_height, gen_width_upper,
-                      gen_width_middle, gen_width_lower]
+                row = [
+                    os.path.basename(path),
+                    gt_height,
+                    gt_width_upper,
+                    gt_width_middle,
+                    gt_width_lower,
+                    gen_height,
+                    gen_width_upper,
+                    gen_width_middle,
+                    gen_width_lower,
+                ]
                 dimensions_df.loc[len(dimensions_df)] = row
 
                 # Compute metrics
-                metrics = self.compare_images_and_display_metrics(
-                    rotated_gt, realigned_gen, original_image=None
-                )
+                metrics = self.compare_images_and_display_metrics(rotated_gt, realigned_gen, original_image=None)
                 all_metrics.append(metrics)
 
                 # Count threshold passes
@@ -756,21 +723,21 @@ class ImageComparison:
                         print(f"  {key}: {value}")
                     print()
 
-            except Exception as e:
+            except Exception:
                 num_images -= 1
                 if verbose:
                     print(f"Failed to process image {path}: {traceback.format_exc()}")
                 continue
 
         # Compute statistics
-        metrics_avg = {key: np.mean([m[key] for m in all_metrics])
-                      for key in all_metrics[0].keys()}
-        metrics_std = {key: np.std([m[key] for m in all_metrics])
-                      for key in all_metrics[0].keys()}
+        metrics_avg = {key: np.mean([m[key] for m in all_metrics]) for key in all_metrics[0]}
+        metrics_std = {key: np.std([m[key] for m in all_metrics]) for key in all_metrics[0]}
         metrics_ci95 = {
-            key: (metrics_avg[key] - 1.96 * (metrics_std[key] / np.sqrt(num_images)),
-                  metrics_avg[key] + 1.96 * (metrics_std[key] / np.sqrt(num_images)))
-            for key in metrics_avg.keys()
+            key: (
+                metrics_avg[key] - 1.96 * (metrics_std[key] / np.sqrt(num_images)),
+                metrics_avg[key] + 1.96 * (metrics_std[key] / np.sqrt(num_images)),
+            )
+            for key in metrics_avg
         }
         outlier_counts = self.count_outliers(all_metrics, metrics_avg, metrics_ci95)
 
@@ -782,50 +749,50 @@ class ImageComparison:
             filename = f"{folder_paths[0]}/_metrics.csv"
 
             output_data = []
-            for key in metrics_avg.keys():
-                output_data.append({
-                    'Metric': key,
-                    'Average': round(metrics_avg[key], 3),
-                    'Worst Value': round(self.worst_metrics[key][0], 3),
-                    'Confidence Interval Lower (95%)': round(metrics_ci95[key][0], 3),
-                    'Confidence Interval Upper (95%)': round(metrics_ci95[key][1], 3),
-                    'Number of Images Processed': num_images,
-                    'Outside 1 CI': outlier_counts["outside_1_ci"][key],
-                    'Outside 2 CI': outlier_counts["outside_2_ci"][key],
-                    'Outside 3 CI': outlier_counts["outside_3_ci"][key],
-                    'IQR Outliers': int(outlier_counts["outside_iqr"][key]),
-                    'Z-Score Outliers': int(outlier_counts["outside_z"][key])
-                })
+            for key in metrics_avg:
+                output_data.append(
+                    {
+                        "Metric": key,
+                        "Average": round(metrics_avg[key], 3),
+                        "Worst Value": round(self.worst_metrics[key][0], 3),
+                        "Confidence Interval Lower (95%)": round(metrics_ci95[key][0], 3),
+                        "Confidence Interval Upper (95%)": round(metrics_ci95[key][1], 3),
+                        "Number of Images Processed": num_images,
+                        "Outside 1 CI": outlier_counts["outside_1_ci"][key],
+                        "Outside 2 CI": outlier_counts["outside_2_ci"][key],
+                        "Outside 3 CI": outlier_counts["outside_3_ci"][key],
+                        "IQR Outliers": int(outlier_counts["outside_iqr"][key]),
+                        "Z-Score Outliers": int(outlier_counts["outside_z"][key]),
+                    }
+                )
 
             # Add threshold statistics
             threshold_stats = [
-                ('Exams with Height Metric > 0.95', exams_with_95_height_metric),
-                ('Exams with Width Metric > 0.95', exams_with_95_width_metric),
-                ('Exams with Height Metric > 0.97', exams_with_97_height_metric),
-                ('Exams with Width Metric > 0.97', exams_with_97_width_metric),
-                ('Exams with Height Metric > 0.90', exams_with_90_height_metric),
-                ('Exams with Width Metric > 0.90', exams_with_90_width_metric),
-                ('Exams with Absolute Height Difference < 5', (height_diff < 5).sum()),
-                ('Exams with Absolute Middle Width Difference < 5', (width_diff_middle < 5).sum()),
-                ('Exams with Absolute Lower Width Difference < 5', (width_diff_lower < 5).sum()),
-                ('Exams with Absolute Height Difference < 10', (height_diff < 10).sum()),
-                ('Exams with Absolute Middle Width Difference < 10', (width_diff_middle < 10).sum()),
-                ('Exams with Absolute Lower Width Difference < 10', (width_diff_lower < 10).sum()),
+                ("Exams with Height Metric > 0.95", exams_with_95_height_metric),
+                ("Exams with Width Metric > 0.95", exams_with_95_width_metric),
+                ("Exams with Height Metric > 0.97", exams_with_97_height_metric),
+                ("Exams with Width Metric > 0.97", exams_with_97_width_metric),
+                ("Exams with Height Metric > 0.90", exams_with_90_height_metric),
+                ("Exams with Width Metric > 0.90", exams_with_90_width_metric),
+                ("Exams with Absolute Height Difference < 5", (height_diff < 5).sum()),
+                ("Exams with Absolute Middle Width Difference < 5", (width_diff_middle < 5).sum()),
+                ("Exams with Absolute Lower Width Difference < 5", (width_diff_lower < 5).sum()),
+                ("Exams with Absolute Height Difference < 10", (height_diff < 10).sum()),
+                ("Exams with Absolute Middle Width Difference < 10", (width_diff_middle < 10).sum()),
+                ("Exams with Absolute Lower Width Difference < 10", (width_diff_lower < 10).sum()),
             ]
 
             for metric_name, count in threshold_stats:
-                output_data.append({
-                    'Metric': metric_name,
-                    'Count': count,
-                    'Percentage': round((count / num_images) * 100, 2)
-                })
+                output_data.append(
+                    {"Metric": metric_name, "Count": count, "Percentage": round((count / num_images) * 100, 2)}
+                )
 
             df = pd.DataFrame(output_data)
-            df.to_csv(filename, index=False, sep=';')
+            df.to_csv(filename, index=False, sep=";")
             if verbose:
                 print(f"Metrics and confidence intervals saved to {filename}")
 
-            dimensions_df.to_csv(f"{folder_paths[0]}/_dimensions.csv", index=False, sep=';')
+            dimensions_df.to_csv(f"{folder_paths[0]}/_dimensions.csv", index=False, sep=";")
             if verbose:
                 print(f"Dimensions saved to {folder_paths[0]}/_dimensions.csv")
 
@@ -839,8 +806,6 @@ class ImageComparison:
                 print(f"{key}: {value}")
 
         plot_filename = f"{folder_paths[0]}/_metrics_distribution.png"
-        self.plot_metric_distributions_with_ci(
-            all_metrics, metrics_avg, metrics_ci95, save_path=plot_filename
-        )
+        self.plot_metric_distributions_with_ci(all_metrics, metrics_avg, metrics_ci95, save_path=plot_filename)
 
         return metrics_avg, metrics_ci95

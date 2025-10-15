@@ -16,19 +16,18 @@ import os
 import sys
 import time
 from pathlib import Path
-import tifffile
 
+import tifffile
 import torch
 import torch.nn.functional as F
+from monai.config import print_config
 from monai.inferers import LatentDiffusionInferer
 from monai.networks.schedulers import DDPMScheduler
-from monai.config import print_config
 from monai.utils import first, set_determinism
 from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
-from utils_tif_no_augment import define_instance, prepare_tif_dataloader_ldm, setup_ddp, normalize_batch_for_display
-from visualize_image import visualize_2d_image
+from utils_tif_no_augment import define_instance, normalize_batch_for_display, prepare_tif_dataloader_ldm, setup_ddp
 
 
 def main():
@@ -66,8 +65,8 @@ def main():
     torch.backends.cudnn.benchmark = True
     torch.set_num_threads(4)
 
-    env_dict = json.load(open(args.environment_file, "r"))["ldm"]
-    config_dict = json.load(open(args.config_file, "r"))
+    env_dict = json.load(open(args.environment_file))["ldm"]
+    config_dict = json.load(open(args.config_file))
 
     for k, v in env_dict.items():
         setattr(args, k, v)
@@ -178,15 +177,13 @@ def main():
 
     # Step 3: training config
     optimizer_diff = torch.optim.Adam(
-        list(unet.parameters()) + list(condition_projector.parameters()),
-        lr=args.diffusion_train["lr"] * world_size
+        list(unet.parameters()) + list(condition_projector.parameters()), lr=args.diffusion_train["lr"] * world_size
     )
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer_diff,
         milestones=args.diffusion_train["lr_scheduler_milestones"],
         gamma=0.1,
     )
-
 
     # Step 4: training
     max_epochs = args.diffusion_train["max_epochs"]
@@ -198,7 +195,7 @@ def main():
     start_time = time.time()
 
     for epoch in range(start_epoch, max_epochs):
-        print(f"\n📅 Début de l'epoch {epoch}/{max_epochs-1}")
+        print(f"\n📅 Début de l'epoch {epoch}/{max_epochs - 1}")
 
         unet.train()
         lr_scheduler.step()
@@ -229,16 +226,13 @@ def main():
                 # Generate random noise
                 noise_shape = [images.shape[0]] + list(z.shape[1:])
                 noise = torch.randn(noise_shape, dtype=images.dtype).to(device)
-                
+
                 # test mix random noise + coupe dentée
                 # alpha = 0.7
                 # pure_noise = torch.randn_like(condition_latent)
                 # noise = torch.sqrt(torch.tensor(alpha)) * pure_noise + torch.sqrt(torch.tensor(1 - alpha)) * condition_latent
                 # # Renormalisation locale par image (batch-wise)
                 # noise = (noise - noise.mean(dim=(1,2,3), keepdim=True)) / noise.std(dim=(1,2,3), keepdim=True)
-
-
-
 
                 # Create timesteps
                 timesteps = torch.randint(
@@ -260,9 +254,8 @@ def main():
                     noise=noise,
                     timesteps=timesteps,
                     condition=condition_context,
-                    mode="crossattn"
+                    mode="crossattn",
                 )
-
 
                 loss = F.mse_loss(noise_pred.float(), noise.float())
 
@@ -331,7 +324,6 @@ def main():
                     full_visu = torch.cat(grid_rows, dim=1)
                     tensorboard_writer.add_image("train_visu_4x2_noise_recon", full_visu, global_step=total_step)
 
-
         # Validation
         if (epoch) % val_interval == 0:
             print(f"\n🔍 Début de la validation à l'epoch {epoch}")
@@ -358,7 +350,6 @@ def main():
 
             with torch.no_grad():
                 with autocast("cuda", enabled=True):
-
                     # valeur du bruit et de l'image latente
                     if rank == 0 and epoch == 0:
                         stats_file = Path(args.run_dir) / "stat_debug_alpha.txt"
@@ -387,10 +378,13 @@ def main():
                         # Generate random noise
                         # noise_shape = [images.shape[0]] + list(z.shape[1:])
                         # noise = torch.randn(noise_shape, dtype=images.dtype).to(device)
-                        
+
                         alpha = 0.7
                         pure_noise = torch.randn_like(condition_latent)
-                        noise_mixed = torch.sqrt(torch.tensor(alpha)) * pure_noise + torch.sqrt(torch.tensor(1 - alpha)) * condition_latent
+                        noise_mixed = (
+                            torch.sqrt(torch.tensor(alpha)) * pure_noise
+                            + torch.sqrt(torch.tensor(1 - alpha)) * condition_latent
+                        )
 
                         # Stats AVANT normalisation
                         if rank == 0:
@@ -403,7 +397,9 @@ def main():
                             n += 1
 
                         # Renormalisation APRES
-                        noise = (noise_mixed - noise_mixed.mean(dim=(1,2,3), keepdim=True)) / noise_mixed.std(dim=(1,2,3), keepdim=True)
+                        noise = (noise_mixed - noise_mixed.mean(dim=(1, 2, 3), keepdim=True)) / noise_mixed.std(
+                            dim=(1, 2, 3), keepdim=True
+                        )
 
                         timesteps = torch.randint(
                             0,
@@ -424,11 +420,11 @@ def main():
                             noise=noise,
                             timesteps=timesteps,
                             condition=condition_context[0:1, ...],
-                            mode="crossattn"
+                            mode="crossattn",
                         )
                         val_loss = F.mse_loss(noise_pred.float(), noise.float())
                         val_recon_epoch_loss += val_loss
-                        val_steps_used += 1  
+                        val_steps_used += 1
 
                         if rank == 0:
                             synthetic_images = inferer.sample(
@@ -437,7 +433,7 @@ def main():
                                 diffusion_model=unet,
                                 scheduler=scheduler,
                                 conditioning=condition_context[0:1, ...],
-                                mode="crossattn"
+                                mode="crossattn",
                             )
 
                             # Récupération des 4 images pour TensorBoard
@@ -447,11 +443,17 @@ def main():
                             noise_cpu = noise[0].unsqueeze(0).detach().cpu()
 
                             # Décodage du bruit en image
-                            noise_img = torch.clamp(inferer_autoencoder.decode_stage_2_outputs(noise_cpu.to(device)), min=-5, max=5).cpu()
+                            noise_img = torch.clamp(
+                                inferer_autoencoder.decode_stage_2_outputs(noise_cpu.to(device)), min=-5, max=5
+                            ).cpu()
 
                             if do_save_images:
-                                tifffile.imwrite(dir_image / f"step{step:03}.tif", torch.rot90(img.cpu(), k=3, dims=[0, 1]).numpy())
-                                tifffile.imwrite(dir_synth / f"step{step:03}.tif", torch.rot90(recon.cpu(), k=3, dims=[0, 1]).numpy())
+                                tifffile.imwrite(
+                                    dir_image / f"step{step:03}.tif", torch.rot90(img.cpu(), k=3, dims=[0, 1]).numpy()
+                                )
+                                tifffile.imwrite(
+                                    dir_synth / f"step{step:03}.tif", torch.rot90(recon.cpu(), k=3, dims=[0, 1]).numpy()
+                                )
 
                             # Pour TensorBoard
                             cond_disp = torch.rot90(normalize_batch_for_display(cond), k=3, dims=[2, 3])[0]
@@ -472,10 +474,9 @@ def main():
                 with open(stats_file, "w") as f:
                     f.write(f"📊 Moyennes sur {n} batchs de validation — bruit = pure_noise + condition_latent\n\n")
                     f.write(f"alpha = {alpha}\n\n")
-                    f.write(f"pure_noise       : mean = {sum_mean_noise/n:.4f}, std = {sum_std_noise/n:.4f}\n")
-                    f.write(f"condition_latent : mean = {sum_mean_cond/n:.4f}, std = {sum_std_cond/n:.4f}\n")
-                    f.write(f"combined_noise   : mean = {sum_mean_comb/n:.4f}, std = {sum_std_comb/n:.4f}\n")
-
+                    f.write(f"pure_noise       : mean = {sum_mean_noise / n:.4f}, std = {sum_std_noise / n:.4f}\n")
+                    f.write(f"condition_latent : mean = {sum_mean_cond / n:.4f}, std = {sum_std_cond / n:.4f}\n")
+                    f.write(f"combined_noise   : mean = {sum_mean_comb / n:.4f}, std = {sum_std_comb / n:.4f}\n")
 
             # Bloc de sauvegarde des poids
             if do_save_weights:
@@ -501,20 +502,24 @@ def main():
                     best_epoch_saved = epoch
 
                     # Save new best
-                    torch.save(unet.module.state_dict() if ddp_bool else unet.state_dict(),
-                            os.path.join(args.model_dir, f"diffusion_unet_epoch{epoch}.pth"))
+                    torch.save(
+                        unet.module.state_dict() if ddp_bool else unet.state_dict(),
+                        os.path.join(args.model_dir, f"diffusion_unet_epoch{epoch}.pth"),
+                    )
 
-                    torch.save({
-                        'epoch': epoch,
-                        'unet_state_dict': unet.module.state_dict() if ddp_bool else unet.state_dict(),
-                        'condition_projector_state_dict': condition_projector.state_dict(),
-                        'optimizer_state_dict': optimizer_diff.state_dict(),
-                        'best_val_loss': best_val_recon_epoch_loss,
-                        'total_step': total_step,
-                    }, os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth"))
+                    torch.save(
+                        {
+                            "epoch": epoch,
+                            "unet_state_dict": unet.module.state_dict() if ddp_bool else unet.state_dict(),
+                            "condition_projector_state_dict": condition_projector.state_dict(),
+                            "optimizer_state_dict": optimizer_diff.state_dict(),
+                            "best_val_loss": best_val_recon_epoch_loss,
+                            "total_step": total_step,
+                        },
+                        os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth"),
+                    )
 
                     print(f"✅ Meilleurs modèles enregistrés pour l'epoch {epoch}.")
-
 
 
 if __name__ == "__main__":

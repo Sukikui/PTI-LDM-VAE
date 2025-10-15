@@ -1,7 +1,7 @@
 # Models Module
 
-This module provides simple wrappers around MONAI models. 
-The wrappers simplify model instantiation from configuration dictionaries while maintaining full compatibility 
+This module provides simple wrappers around MONAI models.
+The wrappers simplify model instantiation from configuration dictionaries while maintaining full compatibility
 with existing checkpoints.
 
 ## Overview
@@ -10,7 +10,7 @@ with existing checkpoints.
 - **`DiffusionUNet`**: Wrapper around `monai.networks.nets.DiffusionModelUNet`
 - **`create_condition_projector`**: Helper function to create conditioning projection layers
 
----
+______________________________________________________________________
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ condition_projector = create_condition_projector(
 ).to(device)
 ```
 
----
+______________________________________________________________________
 
 ## VAEModel
 
@@ -93,7 +93,7 @@ if ddp_bool:
     torch.save(vae.module.state_dict(), "autoencoder.pt")
 ```
 
----
+______________________________________________________________________
 
 ## DiffusionUNet
 
@@ -147,7 +147,7 @@ unet.load_state_dict(checkpoint['unet_state_dict'])
 condition_projector.load_state_dict(checkpoint['condition_projector_state_dict'])
 ```
 
----
+______________________________________________________________________
 
 ## Condition Projector
 
@@ -168,7 +168,7 @@ optimizer = torch.optim.Adam(
 )
 ```
 
----
+______________________________________________________________________
 
 ## Loss Functions
 
@@ -189,49 +189,50 @@ loss = recons_loss + kl_weight * kl_loss
 ```
 
 **Parameters:**
+
 - `z_mu` (torch.Tensor): Mean of the latent distribution, shape `[B, C, ...]`
 - `z_sigma` (torch.Tensor): Standard deviation of the latent distribution, shape `[B, C, ...]`
 
 **Returns:**
+
 - Scalar KL divergence loss averaged over the batch
 
----
+______________________________________________________________________
 
 ## Configuration Reference
 
 ### VAE Configuration
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `spatial_dims` | int | required | 2 for 2D, 3 for 3D |
-| `in_channels` | int | required | Number of input channels |
-| `out_channels` | int | required | Number of output channels |
-| `latent_channels` | int | required | Latent space channels |
-| `channels` | list[int] | required | Channels per resolution level |
-| `num_res_blocks` | int | 2 | Residual blocks per level |
-| `norm_num_groups` | int | 32 | Group norm groups |
-| `norm_eps` | float | 1e-6 | Normalization epsilon |
-| `attention_levels` | list[bool] | `[False]*len(channels)` | Enable attention per level |
-| `with_encoder_nonlocal_attn` | bool | True | Non-local attention in encoder |
-| `with_decoder_nonlocal_attn` | bool | True | Non-local attention in decoder |
+| Parameter                    | Type       | Default                 | Description                    |
+| ---------------------------- | ---------- | ----------------------- | ------------------------------ |
+| `spatial_dims`               | int        | required                | 2 for 2D, 3 for 3D             |
+| `in_channels`                | int        | required                | Number of input channels       |
+| `out_channels`               | int        | required                | Number of output channels      |
+| `latent_channels`            | int        | required                | Latent space channels          |
+| `channels`                   | list[int]  | required                | Channels per resolution level  |
+| `num_res_blocks`             | int        | 2                       | Residual blocks per level      |
+| `norm_num_groups`            | int        | 32                      | Group norm groups              |
+| `norm_eps`                   | float      | 1e-6                    | Normalization epsilon          |
+| `attention_levels`           | list[bool] | `[False]*len(channels)` | Enable attention per level     |
+| `with_encoder_nonlocal_attn` | bool       | True                    | Non-local attention in encoder |
+| `with_decoder_nonlocal_attn` | bool       | True                    | Non-local attention in decoder |
 
 ### UNet Configuration
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `spatial_dims` | int | required | 2 for 2D, 3 for 3D |
-| `in_channels` | int | required | Input channels (VAE latent channels) |
-| `out_channels` | int | required | Output channels (usually same as input) |
-| `channels` | list[int] | required | Channels per resolution level |
-| `attention_levels` | list[bool] | required | Enable attention per level |
-| `num_head_channels` | list[int] | required | Attention heads per level |
-| `num_res_blocks` | int | 2 | Residual blocks per level |
-| `with_conditioning` | bool | True | Enable cross-attention conditioning |
-| `cross_attention_dim` | int | 512 | Cross-attention feature dimension |
-| `norm_num_groups` | int | 32 | Group norm groups |
+| Parameter             | Type       | Default  | Description                             |
+| --------------------- | ---------- | -------- | --------------------------------------- |
+| `spatial_dims`        | int        | required | 2 for 2D, 3 for 3D                      |
+| `in_channels`         | int        | required | Input channels (VAE latent channels)    |
+| `out_channels`        | int        | required | Output channels (usually same as input) |
+| `channels`            | list[int]  | required | Channels per resolution level           |
+| `attention_levels`    | list[bool] | required | Enable attention per level              |
+| `num_head_channels`   | list[int]  | required | Attention heads per level               |
+| `num_res_blocks`      | int        | 2        | Residual blocks per level               |
+| `with_conditioning`   | bool       | True     | Enable cross-attention conditioning     |
+| `cross_attention_dim` | int        | 512      | Cross-attention feature dimension       |
+| `norm_num_groups`     | int        | 32       | Group norm groups                       |
 
-
----
+______________________________________________________________________
 
 ## DDP (Distributed Data Parallel) Usage
 

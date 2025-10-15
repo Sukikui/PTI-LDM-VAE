@@ -8,13 +8,14 @@ This module handles data loading and preprocessing for TIF images.
 - **`create_ldm_dataloaders`**: Load paired images for LDM training
 - **Transform classes**: Custom preprocessing (normalization, masking)
 
----
+______________________________________________________________________
 
 ## Quick Start
 
 ### VAE Dataloaders
 
 Load images for VAE training. You can choose to load:
+
 - Only "edente" images (default)
 - Only "dente" images
 - Both mixed together
@@ -58,7 +59,7 @@ for images, condition_images in train_loader:
     pass
 ```
 
----
+______________________________________________________________________
 
 ## Data Directory Structure
 
@@ -78,30 +79,31 @@ data_base_dir/
 
 **Important**: For LDM, the "edente" and "dente" folders must contain the **same number** of images with **matching names**.
 
----
+______________________________________________________________________
 
 ## Parameters
 
 ### Common Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `data_base_dir` | str | required | Base directory containing "edente" (and "dente" for LDM) |
-| `batch_size` | int | required | Batch size for dataloaders |
-| `patch_size` | tuple[int, int] | required | Target image size (H, W) |
-| `augment` | bool | False | Enable data augmentation |
-| `rank` | int | 0 | Process rank (for multi-GPU training) |
-| `data_source` | str | "edente" | VAE only: "edente", "dente", or "both" |
+| Parameter       | Type            | Default  | Description                                              |
+| --------------- | --------------- | -------- | -------------------------------------------------------- |
+| `data_base_dir` | str             | required | Base directory containing "edente" (and "dente" for LDM) |
+| `batch_size`    | int             | required | Batch size for dataloaders                               |
+| `patch_size`    | tuple[int, int] | required | Target image size (H, W)                                 |
+| `augment`       | bool            | False    | Enable data augmentation                                 |
+| `rank`          | int             | 0        | Process rank (for multi-GPU training)                    |
+| `data_source`   | str             | "edente" | VAE only: "edente", "dente", or "both"                   |
 
 ### Augmentation
 
 When `augment=True`:
+
 - **VAE**: Applies augmentation + resizes to `patch_size`
 - **LDM**: Applies augmentation to both images + resizes to `patch_size`
 
 Requires `augmentation_utils.py` with `get_albumentations_transform()` function.
 
----
+______________________________________________________________________
 
 ## Data Preprocessing
 
@@ -117,23 +119,25 @@ All images go through these transforms:
 ### Local Normalization
 
 The `LocalNormalizeByMask` transform:
+
 - Computes mean/std **only on non-zero pixels** (excludes background)
 - Normalizes the entire image
 - Keeps background at zero
 
 This is important for medical images with black backgrounds.
 
----
+______________________________________________________________________
 
 ## Data Split
 
 Both functions automatically split data into train/val sets:
+
 - **Train**: 90% of data
 - **Val**: 10% of data
 
 The split is deterministic (based on sorted file names).
 
----
+______________________________________________________________________
 
 ## Custom Transforms
 
@@ -156,7 +160,7 @@ image_tuple = to_tuple({"image": img1, "condition": img2})
 # Returns: (img1, img2)
 ```
 
----
+______________________________________________________________________
 
 ## Examples
 
@@ -222,7 +226,7 @@ train_loader, val_loader = create_vae_dataloaders(
 )
 ```
 
----
+______________________________________________________________________
 
 ## Notes
 

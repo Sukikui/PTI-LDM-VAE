@@ -9,7 +9,7 @@ This directory contains training and inference scripts for the PTI-LDM-VAE proje
 - **`inference_vae.py`**: Run inference with a trained VAE
 - **`inference_ldm.py`**: Generate images with a trained LDM
 
----
+______________________________________________________________________
 
 ## Training Scripts
 
@@ -27,6 +27,7 @@ python scripts/train_vae.py \
 ```
 
 **Arguments:**
+
 - `-e, --environment-file`: Path to environment JSON file (default: `./config/environment_tif.json`)
 - `-c, --config-file`: Path to config JSON file (default: `./config/config_train_16g_cond.json`)
 - `-g, --gpus`: Number of GPUs to use (default: 1)
@@ -41,11 +42,12 @@ torchrun --nproc_per_node=4 scripts/train_vae.py \
 ```
 
 **Outputs:**
+
 - Checkpoints saved in `<run_dir>/trained_weights/`
 - TensorBoard logs in `<run_dir>/tfevent/`
 - Validation samples in `<run_dir>/validation_samples/`
 
----
+______________________________________________________________________
 
 ### train_ldm.py
 
@@ -61,6 +63,7 @@ python scripts/train_ldm.py \
 ```
 
 **Arguments:**
+
 - `-e, --environment-file`: Path to environment JSON file (default: `./config/environment_tif.json`)
 - `-c, --config-file`: Path to config JSON file (default: `./config/config_train_16g_cond.json`)
 - `-g, --gpus`: Number of GPUs to use (default: 1)
@@ -75,14 +78,16 @@ torchrun --nproc_per_node=4 scripts/train_ldm.py \
 ```
 
 **Requirements:**
+
 - Pretrained VAE checkpoint (specified in environment file)
 
 **Outputs:**
+
 - Checkpoints saved in `<run_dir>/trained_weights/`
 - TensorBoard logs in `<run_dir>/tfevent/`
 - Validation samples in `<run_dir>/validation_samples/`
 
----
+______________________________________________________________________
 
 ## Inference Scripts
 
@@ -102,6 +107,7 @@ python scripts/inference_vae.py \
 ```
 
 **Arguments:**
+
 - `-c, --config-file`: Path to config JSON file (default: `./config/config_train_16g_cond.json`)
 - `--checkpoint`: Path to VAE checkpoint file (required)
 - `--input-dir`: Directory containing input TIF images (required)
@@ -110,10 +116,11 @@ python scripts/inference_vae.py \
 - `--batch-size`: Batch size (default: 8)
 
 **Outputs:**
+
 - `results_tif/`: Raw TIF files (original | reconstruction)
 - `results_png/`: PNG files normalized for visualization
 
----
+______________________________________________________________________
 
 ### inference_ldm.py
 
@@ -130,6 +137,7 @@ python scripts/inference_ldm.py \
 ```
 
 **Arguments:**
+
 - `-e, --environment-file`: Path to environment JSON file (default: `./config/environment_tif.json`)
 - `-c, --config-file`: Path to config JSON file (default: `./config/config_train_16g_cond.json`)
 - `--checkpoint`: Path to LDM checkpoint file (required)
@@ -138,13 +146,15 @@ python scripts/inference_ldm.py \
 - `--batch-size`: Batch size (default: 1)
 
 **Requirements:**
+
 - Pretrained VAE checkpoint (specified in environment file)
 
 **Outputs:**
+
 - `results_tif/`: Raw TIF files (condition | target | synthetic)
 - `results_png/`: PNG files normalized for visualization
 
----
+______________________________________________________________________
 
 ## Configuration Files
 
@@ -229,7 +239,7 @@ Contains model architecture and training hyperparameters:
 }
 ```
 
----
+______________________________________________________________________
 
 ## Data Directory Structure
 
@@ -248,11 +258,12 @@ data_base_dir/
 ```
 
 **Notes:**
+
 - For VAE training, only `edente/` folder is required
 - For LDM training, both `edente/` and `dente/` folders are required
 - Image names must match between folders for paired training
 
----
+______________________________________________________________________
 
 ## Complete Workflow Example
 
@@ -293,7 +304,7 @@ python scripts/inference_ldm.py \
   --num-samples 20
 ```
 
----
+______________________________________________________________________
 
 ## Monitoring Training
 
@@ -305,7 +316,7 @@ tensorboard --logdir runs/
 
 Then open http://localhost:6006 in your browser.
 
----
+______________________________________________________________________
 
 ## Notes
 
@@ -314,7 +325,7 @@ Then open http://localhost:6006 in your browser.
 - Best models are saved based on validation loss
 - Images are rotated 90° counterclockwise (k=3) for correct orientation
 
----
+______________________________________________________________________
 
 ## Analysis Scripts
 
@@ -331,7 +342,7 @@ python scripts/analyze_umap.py \
   --folder-group1 data/edente/ \
   --output-dir analysis/umap_edente/ \
   --max-images 1000 \
-  --color-by-exam
+  --color-by-patient
 ```
 
 **Usage (two-group comparison):**
@@ -344,12 +355,13 @@ python scripts/analyze_umap.py \
   --folder-group2 data/dente/ \
   --output-dir analysis/umap_comparison/ \
   --max-images 1000 \
-  --color-by-exam \
+  --color-by-patient \
   --n-neighbors 40 \
   --min-dist 0.5
 ```
 
 **Arguments:**
+
 - `--vae-weights`: Path to trained VAE weights (required)
 - `--config-file`: Path to config JSON file (required)
 - `--folder-group1`: Path to first image group (required)
@@ -357,18 +369,19 @@ python scripts/analyze_umap.py \
 - `--output-dir`: Output directory for results (required)
 - `--max-images`: Maximum images per group (default: 1000)
 - `--patch-size`: Image patch size H W (default: 256 256)
-- `--color-by-exam`: Color points by exam ID instead of group
+- `--color-by-patient`: Color points by patient ID instead of group
 - `--n-neighbors`: UMAP n_neighbors parameter (default: 40)
 - `--min-dist`: UMAP min_dist parameter (default: 0.5)
 - `--seed`: Random seed (default: 42)
 
 **Outputs:**
-- `umap_projection.png` - 2D visualization of latent space
-- `color_legend.txt` - Color mapping for exams (if --color-by-exam)
-- `distance_metrics.txt` - Distance statistics per exam (two-group mode)
-- `exams_sorted_by_distance.txt` - Exams sorted by latent distance (two-group mode)
 
----
+- `umap_projection.html` - Interactive 2D visualization of latent space
+- `color_legend.txt` - Color mapping for patients (if --color-by-patient)
+- `distance_metrics.txt` - Distance statistics per patient (two-group mode)
+- `exams_sorted_by_distance.txt` - Patients sorted by latent distance (two-group mode)
+
+______________________________________________________________________
 
 ### analyze_tsne.py
 
@@ -383,7 +396,7 @@ python scripts/analyze_tsne.py \
   --folder-group1 data/edente/ \
   --output-dir analysis/tsne_edente/ \
   --max-images 1000 \
-  --color-by-exam
+  --color-by-patient
 ```
 
 **Usage (two-group comparison):**
@@ -400,6 +413,7 @@ python scripts/analyze_tsne.py \
 ```
 
 **Arguments:**
+
 - `--vae-weights`: Path to trained VAE weights (required)
 - `--config-file`: Path to config JSON file (required)
 - `--folder-group1`: Path to first image group (required)
@@ -407,19 +421,21 @@ python scripts/analyze_tsne.py \
 - `--output-dir`: Output directory for results (required)
 - `--max-images`: Maximum images per group (default: 1000)
 - `--patch-size`: Image patch size H W (default: 256 256)
-- `--color-by-exam`: Color points by exam ID instead of group
+- `--color-by-patient`: Color points by patient ID instead of group
 - `--perplexity`: t-SNE perplexity parameter (default: 30)
 - `--seed`: Random seed (default: 42)
 
 **Outputs:**
-- `tsne_projection.png` - 2D visualization of latent space
-- `color_legend.txt` - Color mapping for exams (if --color-by-exam)
-- `distance_metrics.txt` - Distance statistics per exam (two-group mode)
-- `exams_sorted_by_distance.txt` - Exams sorted by latent distance (two-group mode)
+
+- `tsne_projection.html` - Interactive 2D visualization of latent space
+- `color_legend.txt` - Color mapping for patients (if --color-by-patient)
+- `distance_metrics.txt` - Distance statistics per patient (two-group mode)
+- `exams_sorted_by_distance.txt` - Patients sorted by latent distance (two-group mode)
 
 **Notes:**
-- Image filenames should follow the pattern: `<slice_number>_<exam_id>.tif`
-- Example: `0001_patient_ABC_session1.tif`
-- The exam ID (everything after first underscore) is used for grouping and coloring
+
+- Image filenames should follow the pattern: `<slice_id>_<date>_<patient_id>.tif`
+- Example: `1000_HA_2021_02_545.tif` (patient ID is 545)
+- The patient ID (last element after underscore split) is used for grouping and coloring
 - Analysis scripts use PCA (50 components) before UMAP/t-SNE for efficiency
 - t-SNE computation may take several minutes for large datasets

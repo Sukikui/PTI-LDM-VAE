@@ -9,6 +9,7 @@ This module provides tools for analyzing trained VAE models and evaluating gener
 Comprehensive image comparison and metrics computation for medical image analysis.
 
 **Key Features:**
+
 - Reconstruction metrics: MSE, SSIM, PSNR
 - Segmentation metrics: Dice coefficient, IoU
 - Perceptual metrics: VGG16 feature similarity
@@ -32,6 +33,7 @@ metrics_avg, metrics_ci95 = comparer.process_all_images(
 ```
 
 **Key Methods:**
+
 - `get_image_pair()` - Load ground truth and prediction pairs
 - `compare_images_and_display_metrics()` - Compute all metrics
 - `process_all_images()` - Batch processing with statistics
@@ -42,6 +44,7 @@ metrics_avg, metrics_ci95 = comparer.process_all_images(
 Tools for analyzing and visualizing VAE latent space using dimensionality reduction.
 
 **Key Features:**
+
 - Image encoding to latent space
 - UMAP dimensionality reduction
 - t-SNE dimensionality reduction
@@ -72,13 +75,14 @@ umap_projection, umap_model = analyzer.reduce_dimensionality_umap(
 # Visualize
 analyzer.plot_projection_2d(
     projections=[(umap_projection, image_ids, 'o', "group1")],
-    output_path="umap_visualization.png",
+    output_path="umap_visualization.html",
     title="UMAP Projection",
-    color_by_exam=True
+    color_by_patient=True
 )
 ```
 
 **Key Methods:**
+
 - `encode_images()` - Encode images to latent space
 - `reduce_dimensionality_umap()` - UMAP reduction
 - `reduce_dimensionality_tsne()` - t-SNE reduction
@@ -86,8 +90,9 @@ analyzer.plot_projection_2d(
 - `compute_group_statistics()` - Distance metrics between groups
 
 **Helper Functions:**
+
 - `load_image_paths()` - Load image paths from directory
-- `extract_exam_id_from_filename()` - Parse exam IDs from filenames
+- `extract_patient_id_from_filename()` - Parse patient IDs from filenames
 - `compute_distance_metrics()` - Compute distance between point clouds
 
 ## Usage Examples
@@ -137,9 +142,9 @@ umap_proj, _ = analyzer.reduce_dimensionality_umap(latent)
 # Visualize
 analyzer.plot_projection_2d(
     projections=[(umap_proj, ids, 'o', "edente")],
-    output_path="latent_space.png",
+    output_path="latent_space.html",
     title="VAE Latent Space",
-    color_by_exam=True
+    color_by_patient=True
 )
 ```
 
@@ -165,9 +170,9 @@ analyzer.plot_projection_2d(
         (umap1, ids1, 'o', "edentulous"),
         (umap2, ids2, '^', "dental")
     ],
-    output_path="comparison.png",
+    output_path="comparison.html",
     title="Edentulous (o) vs Dental (^)",
-    color_by_exam=True
+    color_by_patient=True
 )
 
 # Compute statistics
@@ -181,20 +186,23 @@ analyzer.compute_group_statistics(
 ## Output Files
 
 ### Metrics (`process_all_images`)
+
 - `_metrics.csv` - Average metrics with confidence intervals
 - `_dimensions.csv` - Object dimensions per image
 - `_metrics_distribution.png` - Distribution plots
 
 ### Latent Space Analysis
-- `umap_projection.png` / `tsne_projection.png` - 2D visualization
-- `color_legend.txt` - Color mapping for exams
-- `distance_metrics.txt` - Per-exam distance statistics
-- `exams_sorted_by_distance.txt` - Sorted exam list
+
+- `umap_projection.html` / `tsne_projection.html` - Interactive 2D visualization
+- `color_legend.txt` - Color mapping for patients
+- `distance_metrics.txt` - Per-patient distance statistics
+- `exams_sorted_by_distance.txt` - Sorted patient list
 
 ## Notes
 
-- Image filenames should follow: `<slice_number>_<exam_id>.tif`
-- Exam IDs (after first underscore) are used for grouping
+- Image filenames should follow: `<slice_id>_<date>_<patient_id>.tif`
+- Example: `1000_HA_2021_02_545.tif` (patient ID is 545)
+- Patient IDs (last element after underscore split) are used for grouping
 - Metrics module expects paired folders: `edente/` and `edente_synth/`
 - Analysis scripts use PCA preprocessing (50 components) before UMAP/t-SNE
 - All tools support both CPU and CUDA execution

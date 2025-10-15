@@ -1,13 +1,12 @@
-from datetime import timedelta
 import os
+from datetime import timedelta
+
 import torch
 import torch.distributed as dist
-from typing import Tuple
 
 
-def setup_ddp(rank: int, world_size: int) -> Tuple[dist, torch.device]:
-    """
-    Setup Distributed Data Parallel training.
+def setup_ddp(rank: int, world_size: int) -> tuple[dist, torch.device]:
+    """Setup Distributed Data Parallel training.
 
     Args:
         rank: Rank of the current process

@@ -1,35 +1,33 @@
-from glob import glob
 import os
-from typing import Tuple
+from glob import glob
 
 import torch
+from monai.data import DataLoader, Dataset
 from monai.transforms import (
     Compose,
-    LoadImage,
     EnsureChannelFirst,
-    Resize,
-    EnsureType,
-    LoadImaged,
     EnsureChannelFirstd,
-    ResizeD,
+    EnsureType,
     EnsureTyped,
+    LoadImage,
+    LoadImaged,
+    Resize,
+    ResizeD,
 )
-from monai.data import Dataset, DataLoader
 
-from .transforms import LocalNormalizeByMask, ApplyLocalNormd, ToTuple
+from .transforms import ApplyLocalNormd, LocalNormalizeByMask, ToTuple
 
 
 def create_vae_dataloaders(
     data_base_dir: str,
     batch_size: int,
-    patch_size: Tuple[int, int],
+    patch_size: tuple[int, int],
     augment: bool = False,
     rank: int = 0,
     data_source: str = "edente",
-    **kwargs
-) -> Tuple[DataLoader, DataLoader]:
-    """
-    Create train and validation dataloaders for VAE training.
+    **kwargs,
+) -> tuple[DataLoader, DataLoader]:
+    """Create train and validation dataloaders for VAE training.
 
     Args:
         data_base_dir: Base directory containing image subfolders
@@ -70,39 +68,40 @@ def create_vae_dataloaders(
     # Handle augmentation
     if augment:
         from .augmentation import get_albumentations_transform
+
         albumentations_transform = get_albumentations_transform()
 
         class AugAlb:
             def __call__(self, img):
                 img_np = img.squeeze(0).numpy()
                 aug = albumentations_transform(image=img_np)
-                return torch.from_numpy(aug['image'][None, ...])
+                return torch.from_numpy(aug["image"][None, ...])
 
         aug_monai = AugAlb()
     else:
-        aug_monai = lambda x: x
+
+        def aug_monai(x):
+            return x
 
     # Define transforms
-    transforms = Compose([
-        LoadImage(image_only=True),
-        EnsureChannelFirst(),
-        Resize(patch_size),
-        LocalNormalizeByMask(),
-        aug_monai,
-        EnsureType(dtype=torch.float32),
-    ])
+    transforms = Compose(
+        [
+            LoadImage(image_only=True),
+            EnsureChannelFirst(),
+            Resize(patch_size),
+            LocalNormalizeByMask(),
+            aug_monai,
+            EnsureType(dtype=torch.float32),
+        ]
+    )
 
     # Create datasets
     train_ds = Dataset(data=train_paths, transform=transforms)
     val_ds = Dataset(data=val_paths, transform=transforms)
 
     # Create dataloaders
-    train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True
-    )
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     if rank == 0:
         print(f"[VAE] Image shape {train_ds[0].shape}")
@@ -113,15 +112,9 @@ def create_vae_dataloaders(
 
 
 def create_ldm_dataloaders(
-    data_base_dir: str,
-    batch_size: int,
-    patch_size: Tuple[int, int],
-    augment: bool = False,
-    rank: int = 0,
-    **kwargs
-) -> Tuple[DataLoader, DataLoader]:
-    """
-    Create train and validation dataloaders for LDM training.
+    data_base_dir: str, batch_size: int, patch_size: tuple[int, int], augment: bool = False, rank: int = 0, **kwargs
+) -> tuple[DataLoader, DataLoader]:
+    """Create train and validation dataloaders for LDM training.
 
     Loads paired images from "edente" (target) and "dente" (condition) folders.
 
@@ -149,10 +142,7 @@ def create_ldm_dataloaders(
         raise ValueError("Les dossiers denté et édenté doivent contenir le même nombre d'images.")
 
     # Create paired data
-    paired_data = [
-        {"image": e, "condition_image": d}
-        for e, d in zip(tif_paths_edente, tif_paths_dente)
-    ]
+    paired_data = [{"image": e, "condition_image": d} for e, d in zip(tif_paths_edente, tif_paths_dente, strict=False)]
 
     # Split train/val (90/10)
     split_idx = int(0.9 * len(paired_data))
@@ -162,20 +152,23 @@ def create_ldm_dataloaders(
     # Handle augmentation
     if augment:
         from .augmentation import get_albumentations_transform
+
         albumentations_transform = get_albumentations_transform()
 
         class AugAlb:
             def __call__(self, data):
-                img = data['image'].squeeze(0).numpy()
-                cond = data['condition_image'].squeeze(0).numpy()
+                img = data["image"].squeeze(0).numpy()
+                cond = data["condition_image"].squeeze(0).numpy()
                 aug = albumentations_transform(image=img, condition_image=cond)
-                data['image'] = torch.from_numpy(aug['image'][None, ...])
-                data['condition_image'] = torch.from_numpy(aug['condition_image'][None, ...])
+                data["image"] = torch.from_numpy(aug["image"][None, ...])
+                data["condition_image"] = torch.from_numpy(aug["condition_image"][None, ...])
                 return data
 
         aug_monai = AugAlb()
     else:
-        aug_monai = lambda x: x
+
+        def aug_monai(x):
+            return x
 
     # Define transforms
     transform_list = [
@@ -199,12 +192,8 @@ def create_ldm_dataloaders(
     val_ds = Dataset(data=val_data, transform=transforms)
 
     # Create dataloaders
-    train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True
-    )
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     if rank == 0:
         sample = next(iter(train_loader))

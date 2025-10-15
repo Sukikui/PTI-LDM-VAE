@@ -3,10 +3,11 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-import torch
 import tifffile
+import torch
 from monai.config import print_config
 from monai.inferers import LatentDiffusionInferer
 from monai.networks.schedulers import DDPMScheduler
@@ -16,32 +17,32 @@ from torch.amp import autocast
 from tqdm import tqdm
 
 from pti_ldm_vae.data import create_ldm_dataloaders
-from pti_ldm_vae.models import VAEModel, DiffusionUNet, create_condition_projector
+from pti_ldm_vae.models import DiffusionUNet, VAEModel, create_condition_projector
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="LDM Inference Script")
-    parser.add_argument("-e", "--environment-file", default="./config/environment_tif.json",
-                        help="Environment json file")
-    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json",
-                        help="Config json file")
-    parser.add_argument("--checkpoint", type=str, required=True,
-                        help="Path to checkpoint (e.g., checkpoint_epoch50.pth)")
-    parser.add_argument("--output-dir", type=str, default=None,
-                        help="Output directory (default: inference_<checkpoint_name>)")
-    parser.add_argument("--num-samples", type=int, default=10,
-                        help="Number of samples to generate (default: 10)")
-    parser.add_argument("--batch-size", type=int, default=1,
-                        help="Batch size (default: 1)")
+    parser.add_argument(
+        "-e", "--environment-file", default="./config/environment_tif.json", help="Environment json file"
+    )
+    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json", help="Config json file")
+    parser.add_argument(
+        "--checkpoint", type=str, required=True, help="Path to checkpoint (e.g., checkpoint_epoch50.pth)"
+    )
+    parser.add_argument(
+        "--output-dir", type=str, default=None, help="Output directory (default: inference_<checkpoint_name>)"
+    )
+    parser.add_argument("--num-samples", type=int, default=10, help="Number of samples to generate (default: 10)")
+    parser.add_argument("--batch-size", type=int, default=1, help="Batch size (default: 1)")
     return parser.parse_args()
 
 
-def load_config(args):
+def load_config(args: argparse.Namespace) -> Any:
     """Load configuration from JSON files."""
-    env_dict = json.load(open(args.environment_file, "r"))["ldm"]
-    config_dict = json.load(open(args.config_file, "r"))
+    env_dict = json.load(open(args.environment_file))["ldm"]
+    config_dict = json.load(open(args.config_file))
 
     class Config:
         pass
@@ -55,13 +56,10 @@ def load_config(args):
     return config
 
 
-def setup_output_dirs(args):
+def setup_output_dirs(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     """Create output directories."""
     checkpoint_path = Path(args.checkpoint)
-    if args.output_dir is None:
-        output_dir = Path(f"inference_{checkpoint_path.stem}")
-    else:
-        output_dir = Path(args.output_dir)
+    output_dir = Path(f"inference_{checkpoint_path.stem}") if args.output_dir is None else Path(args.output_dir)
 
     out_tif = output_dir / "results_tif"
     out_png = output_dir / "results_png"
@@ -71,7 +69,7 @@ def setup_output_dirs(args):
     return output_dir, out_tif, out_png
 
 
-def load_models(config, checkpoint_path, device):
+def load_models(config: Any, checkpoint_path: str, device: torch.device) -> tuple[VAEModel, DiffusionUNet, Any]:
     """Load VAE, UNet, and condition projector."""
     # Load VAE
     autoencoder = VAEModel.from_config(config.autoencoder_def).to(device)
@@ -81,8 +79,7 @@ def load_models(config, checkpoint_path, device):
     # Load UNet and condition projector
     unet = DiffusionUNet.from_config(config.diffusion_def).to(device)
     condition_projector = create_condition_projector(
-        condition_input_dim=4,
-        cross_attention_dim=config.diffusion_def["cross_attention_dim"]
+        condition_input_dim=4, cross_attention_dim=config.diffusion_def["cross_attention_dim"]
     ).to(device)
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -93,19 +90,20 @@ def load_models(config, checkpoint_path, device):
     return autoencoder, unet, condition_projector
 
 
-def compute_scale_factor(autoencoder, val_loader, device):
+def compute_scale_factor(
+    autoencoder: VAEModel, val_loader: Any, device: torch.device
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute latent space scale factor."""
-    with torch.no_grad():
-        with autocast("cuda", enabled=True):
-            first_batch = next(iter(val_loader))
-            check_data = first_batch[0]
-            z = autoencoder.encode_stage_2_inputs(check_data.to(device))
+    with torch.no_grad(), autocast("cuda", enabled=True):
+        first_batch = next(iter(val_loader))
+        check_data = first_batch[0]
+        z = autoencoder.encode_stage_2_inputs(check_data.to(device))
 
     scale_factor = 1 / torch.std(z)
     return scale_factor, z
 
 
-def create_scheduler_and_inferer(config, scale_factor):
+def create_scheduler_and_inferer(config: Any, scale_factor: float) -> tuple[DDPMScheduler, LatentDiffusionInferer]:
     """Create scheduler and inferer."""
     scheduler = DDPMScheduler(
         num_train_timesteps=config.NoiseScheduler["num_train_timesteps"],
@@ -117,7 +115,9 @@ def create_scheduler_and_inferer(config, scale_factor):
     return scheduler, inferer
 
 
-def generate_and_save_sample(idx, cond, target, synth, out_tif, out_png):
+def generate_and_save_sample(
+    idx: int, cond: torch.Tensor, target: torch.Tensor, synth: torch.Tensor, out_tif: Path, out_png: Path
+) -> None:
     """Save a single generated sample as TIF and PNG."""
     # Extract numpy arrays
     cond_np = cond[0, 0].numpy()
@@ -144,38 +144,48 @@ def generate_and_save_sample(idx, cond, target, synth, out_tif, out_png):
     Image.fromarray(array).save(out_png / f"sample{idx:03d}.png")
 
 
-def run_inference(autoencoder, unet, condition_projector, inferer, scheduler,
-                 val_loader, z_shape, device, num_samples, out_tif, out_png):
+def run_inference(
+    autoencoder: VAEModel,
+    unet: DiffusionUNet,
+    condition_projector: Any,
+    inferer: LatentDiffusionInferer,
+    scheduler: DDPMScheduler,
+    val_loader: Any,
+    z_shape: tuple,
+    device: torch.device,
+    num_samples: int,
+    out_tif: Path,
+    out_png: Path,
+) -> None:
     """Run inference and generate samples."""
     num_generated = 0
 
-    for batch_idx, (target_images, condition_images) in enumerate(tqdm(val_loader, desc="Generating")):
+    for _batch_idx, (target_images, condition_images) in enumerate(tqdm(val_loader, desc="Generating")):
         if num_generated >= num_samples:
             break
 
         target_images = target_images.to(device)
         condition_images = condition_images.to(device)
 
-        with torch.no_grad():
-            with autocast("cuda", enabled=True):
-                # Encode condition images to latent space
-                condition_latent = autoencoder.encode_stage_2_inputs(condition_images)
-                B, C, H, W = condition_latent.shape
-                condition_seq = condition_latent.permute(0, 2, 3, 1).reshape(B, H * W, C)
-                condition_context = condition_projector(condition_seq)
+        with torch.no_grad(), autocast("cuda", enabled=True):
+            # Encode condition images to latent space
+            condition_latent = autoencoder.encode_stage_2_inputs(condition_images)
+            B, C, H, W = condition_latent.shape
+            condition_seq = condition_latent.permute(0, 2, 3, 1).reshape(B, H * W, C)
+            condition_context = condition_projector(condition_seq)
 
-                # Generate noise and sample
-                noise_shape = [B] + list(z_shape[1:])
-                noise = torch.randn(noise_shape, dtype=target_images.dtype).to(device)
+            # Generate noise and sample
+            noise_shape = [B, *list(z_shape[1:])]
+            noise = torch.randn(noise_shape, dtype=target_images.dtype).to(device)
 
-                synthetic_images = inferer.sample(
-                    input_noise=noise,
-                    autoencoder_model=autoencoder,
-                    diffusion_model=unet,
-                    scheduler=scheduler,
-                    conditioning=condition_context,
-                    mode="crossattn"
-                )
+            synthetic_images = inferer.sample(
+                input_noise=noise,
+                autoencoder_model=autoencoder,
+                diffusion_model=unet,
+                scheduler=scheduler,
+                conditioning=condition_context,
+                mode="crossattn",
+            )
 
         # Save results for each image in batch
         for i in range(B):
@@ -190,7 +200,7 @@ def run_inference(autoencoder, unet, condition_projector, inferer, scheduler,
             num_generated += 1
 
 
-def main():
+def main() -> None:
     args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -231,8 +241,17 @@ def main():
     # Run inference
     print(f"[INFO] Generating {args.num_samples} samples...")
     run_inference(
-        autoencoder, unet, condition_projector, inferer, scheduler,
-        val_loader, z.shape, device, args.num_samples, out_tif, out_png
+        autoencoder,
+        unet,
+        condition_projector,
+        inferer,
+        scheduler,
+        val_loader,
+        z.shape,
+        device,
+        args.num_samples,
+        out_tif,
+        out_png,
     )
 
     print(f"✅ Inference complete. Results saved in: {output_dir}")

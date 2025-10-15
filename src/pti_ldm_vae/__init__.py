@@ -1,5 +1,4 @@
-"""
-PTI-LDM-VAE: Latent Diffusion Model with Variational Autoencoder.
+"""PTI-LDM-VAE: Latent Diffusion Model with Variational Autoencoder.
 
 This package provides a modular implementation of a latent diffusion model
 for medical image synthesis using a VAE encoder/decoder.

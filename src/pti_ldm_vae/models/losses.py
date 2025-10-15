@@ -2,8 +2,7 @@ import torch
 
 
 def compute_kl_loss(z_mu: torch.Tensor, z_sigma: torch.Tensor) -> torch.Tensor:
-    """
-    Compute KL divergence loss for Variational Autoencoder.
+    """Compute KL divergence loss for Variational Autoencoder.
 
     Args:
         z_mu: Mean of the latent distribution [B, C, ...]

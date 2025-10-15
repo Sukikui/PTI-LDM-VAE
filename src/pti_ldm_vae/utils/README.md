@@ -10,7 +10,7 @@ This module provides utility functions for distributed training and visualizatio
 - **`visualize_2d_image`**: Prepare 2D image for visualization as RGB
 - **`visualize_one_slice_in_3d_image`**: Extract and visualize a slice from 3D image
 
----
+______________________________________________________________________
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ normalized = normalize_batch_for_display(batch)
 tensorboard_writer.add_image("images", normalized[0], global_step=step)
 ```
 
----
+______________________________________________________________________
 
 ## Distributed Training
 
@@ -53,10 +53,12 @@ tensorboard_writer.add_image("images", normalized[0], global_step=step)
 Setup distributed data parallel training environment.
 
 **Parameters:**
+
 - `rank` (int): Rank of current process
 - `world_size` (int): Total number of processes
 
 **Returns:**
+
 - `dist` (module): torch.distributed module
 - `device` (int): CUDA device ID for this process
 
@@ -81,7 +83,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 model = DDP(model, device_ids=[device], output_device=rank)
 ```
 
----
+______________________________________________________________________
 
 ## Visualization
 
@@ -93,11 +95,13 @@ This function normalizes each image in the batch independently, using only non-z
 (to exclude background). It's designed for medical images with black backgrounds.
 
 **Parameters:**
+
 - `tensor` (torch.Tensor): Input batch of shape `[B, C, H, W]`
 - `low` (int): Lower percentile for normalization (default: 2)
 - `high` (int): Upper percentile for normalization (default: 98)
 
 **Returns:**
+
 - `torch.Tensor`: Normalized batch in range [0, 1], same shape as input
 
 **Example:**
@@ -137,7 +141,7 @@ writer.add_image("batch/grid", grid, global_step=0)
 - Works with any number of channels
 - Useful for visualizing medical images with varying intensity ranges
 
----
+______________________________________________________________________
 
 ## Complete Training Example
 
@@ -182,7 +186,7 @@ for epoch in range(num_epochs):
             writer.add_image("train/output", out_disp[0], global_step=epoch)
 ```
 
----
+______________________________________________________________________
 
 ## Image Visualization Functions
 
@@ -191,9 +195,11 @@ for epoch in range(num_epochs):
 Normalize a single image to uint8 format [0, 255] for saving or display.
 
 **Parameters:**
+
 - `image` (np.ndarray): Input image as numpy array
 
 **Returns:**
+
 - `np.ndarray`: Image normalized to uint8 format
 
 **Example:**
@@ -207,16 +213,18 @@ normalized = normalize_image_to_uint8(image)
 # normalized is now in range [0, 255] as uint8
 ```
 
----
+______________________________________________________________________
 
 ### `visualize_2d_image(image)`
 
 Prepare a 2D grayscale image for visualization by converting it to RGB format.
 
 **Parameters:**
+
 - `image`: Image array of shape (H, W), can be torch tensor or numpy array
 
 **Returns:**
+
 - `np.ndarray`: RGB image of shape (H, W, 3) with values in [0, 255]
 
 **Example:**
@@ -234,20 +242,23 @@ rgb_image = visualize_2d_image(image_tensor)
 Image.fromarray(rgb_image).save("output.png")
 ```
 
----
+______________________________________________________________________
 
 ### `visualize_one_slice_in_3d_image(image, axis: int = 2)`
 
 Extract the center slice from a 3D image and prepare it for visualization as RGB.
 
 **Parameters:**
+
 - `image`: 3D image array of shape (H, W, D), can be torch tensor or numpy array
 - `axis` (int): Axis along which to take the center slice (0, 1, or 2). Default: 2
 
 **Returns:**
+
 - `np.ndarray`: RGB image of shape (H, W, 3) with values in [0, 255]
 
 **Raises:**
+
 - `ValueError`: If axis is not in [0, 1, 2]
 
 **Example:**
@@ -267,7 +278,7 @@ rgb_slice = visualize_one_slice_in_3d_image(image_3d, axis=2)
 Image.fromarray(rgb_slice).save("slice.png")
 ```
 
----
+______________________________________________________________________
 
 ## Notes
 

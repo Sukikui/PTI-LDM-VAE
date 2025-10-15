@@ -1,11 +1,13 @@
 [project]
 name = "pti-ldm-vae"
 version = "0.1.0"
-description = "Add your description here"
+description = "Medical Imaging Project for Edentulous Image Prediction using LDM and VAE"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "albumentations>=2.0.8",
+    "dash>=3.2.0",
+    "einops>=0.8.1",
     "matplotlib>=3.10.7",
     "monai>=1.5.1",
     "numpy>=2.3.3",
@@ -13,6 +15,7 @@ dependencies = [
     "opencv-python-headless>=4.11.0.86",
     "pandas>=2.3.3",
     "pillow>=11.3.0",
+    "plotly>=6.3.1",
     "pyyaml>=6.0.3",
     "scikit-image>=0.25.2",
     "scikit-learn>=1.7.2",
@@ -24,8 +27,97 @@ dependencies = [
     "torchvision>=0.23.0",
     "tqdm>=4.67.1",
     "umap>=0.1.1",
+    "umap-learn>=0.5.9.post2",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.1,<5",
+    "docformatter>=1.7.5,<2",
+    "ruff>=0.11,<0.12",
 ]
 
 [build-system]
 requires = ["uv_build>=0.8,<0.9"]
 build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["old_sources/"]
+
+[tool.ruff.lint]
+select = [
+    "A",    # see: https://pypi.org/project/flake8-builtins
+    "ANN",  # see: https://pypi.org/project/flake8-annotations
+    "B",    # see: https://pypi.org/project/flake8-bugbear
+    "C4",   # see: https://pypi.org/project/flake8-comprehensions
+    "D",    # see: https://pypi.org/project/pydocstyle
+    "E",    # see: https://pypi.org/project/pycodestyle
+    "EXE",  # see: https://pypi.org/project/flake8-executable
+    "F",    # see: https://pypi.org/project/pyflakes
+    "I",    # see: https://pypi.org/project/isort/
+    "ISC",  # see: https://pypi.org/project/flake8-implicit-str-concat
+    "N",    # see: https://pypi.org/project/pep8-naming
+    "PERF", # see: https://pypi.org/project/perflint/
+    "PIE",  # see: https://pypi.org/project/flake8-pie
+    "PLC",  # see: https://pypi.org/project/pylint/
+    "PLE",  # all Pylint errors except Refactor (R)
+    "PLW",
+    "PT",   # see: https://pypi.org/project/flake8-pytest-style
+    "Q",    # see: https://pypi.org/project/flake8-quotes
+    "RET",  # see: https://pypi.org/project/flake8-return
+    "RUF",  # Ruff-specific rules
+    "S",    # see: https://pypi.org/project/flake8-bandit
+    "SIM",  # see: https://pypi.org/project/flake8-simplify
+    "T10",  # see: https://pypi.org/project/flake8-debugger
+    "TID",  # see: https://pypi.org/project/flake8-tidy-imports/
+    "UP",   # see: https://docs.astral.sh/ruff/rules/#pyupgrade-up
+    "W",    # see: https://pypi.org/project/pycodestyle
+]
+ignore = [
+    # Do not require type hints for *args and **kwargs
+    "ANN002",
+    "ANN003",
+    # Do not require return type annotation for private functions and special methods
+    "ANN202",
+    "ANN204",
+    # Allow use of Any type
+    "ANN401",
+    # Do not require docstrings in __init__, modules, and main functions
+    "D100",
+    "D103",
+    "D104",
+    "D107",
+    # Allow use of asserting
+    "S101",
+    # Allow /tmp usage for temp directories
+    "S108",
+    # Allow binding to all interfaces (0.0.0.0) for dev servers
+    "S104",
+    # Allow md5/sha1 hash functions (not for cryptography)
+    "S324",
+    # Allow CamelCase argument names (Dash callbacks) and variables (B, C, H, W)
+    "N803",
+    "N806",
+    # Allow standard abbreviations (F for functional, A for albumentations, DDP)
+    "N812",
+    "N817",
+    # Allow loop variable overwriting (common pattern in deep learning)
+    "PLW2901",
+    # Allow simple file operations without context managers for json.load
+    "SIM115",
+    # Allow shebang without executable bit
+    "EXE001",
+    # Allow dictionary iteration without .items() when only keys are needed
+    "PLC0206",
+    # Allow append in loops (not always worth a list comprehension)
+    "PERF401",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.docformatter]
+recursive = true
+wrap-summaries=120
+wrap-descriptions=120

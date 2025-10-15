@@ -7,9 +7,9 @@ from .visualization import (
 )
 
 __all__ = [
-    "setup_ddp",
     "normalize_batch_for_display",
     "normalize_image_to_uint8",
+    "setup_ddp",
     "visualize_2d_image",
     "visualize_one_slice_in_3d_image",
 ]

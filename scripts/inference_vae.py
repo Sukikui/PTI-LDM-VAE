@@ -3,10 +3,11 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-import torch
 import tifffile
+import torch
 from monai.config import print_config
 from monai.data import DataLoader, Dataset
 from monai.transforms import Compose, EnsureChannelFirst, EnsureType, LoadImage, Resize
@@ -19,27 +20,25 @@ from pti_ldm_vae.models import VAEModel
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="VAE Inference Script")
-    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json",
-                        help="Config json file")
-    parser.add_argument("--checkpoint", type=str, required=True,
-                        help="Path to checkpoint (e.g., checkpoint_epoch73.pth)")
-    parser.add_argument("--input-dir", type=str, required=True,
-                        help="Directory containing input TIF images")
-    parser.add_argument("--output-dir", type=str, default=None,
-                        help="Output directory (default: inference_<checkpoint_name>)")
-    parser.add_argument("--num-samples", type=int, default=None,
-                        help="Number of samples to process (default: all)")
-    parser.add_argument("--batch-size", type=int, default=8,
-                        help="Batch size (default: 8)")
+    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json", help="Config json file")
+    parser.add_argument(
+        "--checkpoint", type=str, required=True, help="Path to checkpoint (e.g., checkpoint_epoch73.pth)"
+    )
+    parser.add_argument("--input-dir", type=str, required=True, help="Directory containing input TIF images")
+    parser.add_argument(
+        "--output-dir", type=str, default=None, help="Output directory (default: inference_<checkpoint_name>)"
+    )
+    parser.add_argument("--num-samples", type=int, default=None, help="Number of samples to process (default: all)")
+    parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
     return parser.parse_args()
 
 
-def load_config(config_file):
+def load_config(config_file: str) -> Any:
     """Load configuration from JSON file."""
-    config_dict = json.load(open(config_file, "r"))
+    config_dict = json.load(open(config_file))
 
     class Config:
         pass
@@ -51,7 +50,7 @@ def load_config(config_file):
     return config
 
 
-def setup_output_dirs(args):
+def setup_output_dirs(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     """Create output directories."""
     checkpoint_path = Path(args.checkpoint)
     if args.output_dir is None:
@@ -68,7 +67,9 @@ def setup_output_dirs(args):
     return output_dir, out_tif, out_png
 
 
-def create_dataloader(input_dir, patch_size, batch_size, num_samples=None):
+def create_dataloader(
+    input_dir: str, patch_size: tuple, batch_size: int, num_samples: int | None = None
+) -> tuple[DataLoader, int]:
     """Create dataloader for inference."""
     input_path = Path(input_dir)
     image_paths = sorted(input_path.glob("*.tif"))
@@ -81,28 +82,24 @@ def create_dataloader(input_dir, patch_size, batch_size, num_samples=None):
         image_paths = image_paths[:num_samples]
 
     # Define transforms
-    transforms = Compose([
-        LoadImage(image_only=True),
-        EnsureChannelFirst(),
-        Resize(patch_size),
-        LocalNormalizeByMask(),
-        EnsureType(dtype=torch.float32),
-    ])
+    transforms = Compose(
+        [
+            LoadImage(image_only=True),
+            EnsureChannelFirst(),
+            Resize(patch_size),
+            LocalNormalizeByMask(),
+            EnsureType(dtype=torch.float32),
+        ]
+    )
 
     # Create dataset and dataloader
     dataset = Dataset(data=image_paths, transform=transforms)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=4,
-        pin_memory=True
-    )
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     return dataloader, len(image_paths)
 
 
-def load_model(config, checkpoint_path, device):
+def load_model(config: Any, checkpoint_path: str, device: torch.device) -> VAEModel:
     """Load VAE model from checkpoint."""
     autoencoder = VAEModel.from_config(config.autoencoder_def).to(device)
 
@@ -113,7 +110,7 @@ def load_model(config, checkpoint_path, device):
     return autoencoder
 
 
-def save_results(idx, input_img, recon_img, out_tif, out_png):
+def save_results(idx: int, input_img: torch.Tensor, recon_img: torch.Tensor, out_tif: Path, out_png: Path) -> None:
     """Save a single result as TIF and PNG."""
     # Get numpy arrays (remove batch and channel dimensions)
     input_np = input_img[0].numpy()
@@ -131,7 +128,9 @@ def save_results(idx, input_img, recon_img, out_tif, out_png):
     Image.fromarray(array).save(out_png / f"image{idx:04d}.png")
 
 
-def run_inference(autoencoder, dataloader, device, out_tif, out_png):
+def run_inference(
+    autoencoder: VAEModel, dataloader: DataLoader, device: torch.device, out_tif: Path, out_png: Path
+) -> None:
     """Run inference and save results."""
     img_idx = 0
 
@@ -149,7 +148,7 @@ def run_inference(autoencoder, dataloader, device, out_tif, out_png):
             img_idx += 1
 
 
-def main():
+def main() -> None:
     args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -167,12 +166,7 @@ def main():
 
     # Create dataloader
     patch_size = tuple(config.autoencoder_train["patch_size"])
-    dataloader, num_images = create_dataloader(
-        args.input_dir,
-        patch_size,
-        args.batch_size,
-        args.num_samples
-    )
+    dataloader, num_images = create_dataloader(args.input_dir, patch_size, args.batch_size, args.num_samples)
     print(f"[INFO] Found {num_images} images in {args.input_dir}")
 
     # Load model

@@ -1,4 +1,3 @@
-from typing import Dict, List
 import torch
 import torch.nn as nn
 from monai.networks.nets import DiffusionModelUNet
@@ -7,9 +6,8 @@ from monai.networks.nets import DiffusionModelUNet
 def create_condition_projector(
     condition_input_dim: int,
     cross_attention_dim: int,
-) -> nn.Linear:
-    """
-    Create a linear projection layer for conditioning.
+):
+    """Create a linear projection layer for conditioning.
 
     This projector is used to transform condition features (e.g., latent representations)
     to the cross-attention dimension expected by the UNet.
@@ -34,8 +32,7 @@ def create_condition_projector(
 
 
 class DiffusionUNet(nn.Module):
-    """
-    Diffusion UNet wrapper around MONAI's DiffusionModelUNet.
+    """Diffusion UNet wrapper around MONAI's DiffusionModelUNet.
 
     This is a thin wrapper that simplifies configuration and instantiation
     while exposing all MONAI DiffusionModelUNet functionality.
@@ -72,14 +69,14 @@ class DiffusionUNet(nn.Module):
         spatial_dims: int,
         in_channels: int,
         out_channels: int,
-        channels: List[int],
-        attention_levels: List[bool],
-        num_head_channels: List[int],
+        channels: list[int],
+        attention_levels: list[bool],
+        num_head_channels: list[int],
         num_res_blocks: int = 2,
         with_conditioning: bool = True,
         cross_attention_dim: int = 512,
         norm_num_groups: int = 32,
-    ):
+    ) -> None:
         super().__init__()
 
         self.unet = DiffusionModelUNet(
@@ -96,9 +93,8 @@ class DiffusionUNet(nn.Module):
         )
 
     @classmethod
-    def from_config(cls, config: Dict) -> "DiffusionUNet":
-        """
-        Create a DiffusionUNet from a configuration dictionary.
+    def from_config(cls, config: dict) -> "DiffusionUNet":
+        """Create a DiffusionUNet from a configuration dictionary.
 
         Args:
             config: Dictionary containing model configuration parameters
@@ -125,8 +121,7 @@ class DiffusionUNet(nn.Module):
         timesteps: torch.Tensor,
         context: torch.Tensor = None,
     ) -> torch.Tensor:
-        """
-        Forward pass through the diffusion UNet.
+        """Forward pass through the diffusion UNet.
 
         Args:
             x: Noisy latent tensor
@@ -138,10 +133,10 @@ class DiffusionUNet(nn.Module):
         """
         return self.unet(x, timesteps=timesteps, context=context)
 
-    def load_state_dict(self, state_dict: Dict, strict: bool = True) -> None:
+    def load_state_dict(self, state_dict: dict, strict: bool = True) -> None:
         """Load state dict into the unet."""
         self.unet.load_state_dict(state_dict, strict=strict)
 
-    def state_dict(self) -> Dict:
+    def state_dict(self) -> dict:
         """Get the state dict of the unet."""
         return self.unet.state_dict()

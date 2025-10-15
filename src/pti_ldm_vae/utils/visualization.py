@@ -1,15 +1,10 @@
-import torch
 import numpy as np
+import torch
 from monai.utils.type_conversion import convert_to_numpy
 
 
-def normalize_batch_for_display(
-    tensor: torch.Tensor,
-    low: int = 2,
-    high: int = 98
-) -> torch.Tensor:
-    """
-    Normalize a batch of images [B, C, H, W] to [0, 1] for TensorBoard display.
+def normalize_batch_for_display(tensor: torch.Tensor, low: int = 2, high: int = 98) -> torch.Tensor:
+    """Normalize a batch of images [B, C, H, W] to [0, 1] for TensorBoard display.
 
     Background pixels (values == 0) remain black, and low reconstructed values
     (< 1e-3) are forced to 0.
@@ -42,13 +37,11 @@ def normalize_batch_for_display(
             normed_channels.append(slice_norm)
         normed.append(np.stack(normed_channels))  # [C, H, W]
 
-    normed_tensor = torch.tensor(np.stack(normed))  # [B, C, H, W]
-    return normed_tensor
+    return torch.tensor(np.stack(normed))  # [B, C, H, W]
 
 
 def normalize_image_to_uint8(image: np.ndarray) -> np.ndarray:
-    """
-    Normalize image to uint8 format for visualization.
+    """Normalize image to uint8 format for visualization.
 
     Args:
         image: Numpy array image
@@ -61,13 +54,11 @@ def normalize_image_to_uint8(image: np.ndarray) -> np.ndarray:
         draw_img -= np.amin(draw_img)
     if np.amax(draw_img) > 0.1:
         draw_img /= np.amax(draw_img)
-    draw_img = (255 * draw_img).astype(np.uint8)
-    return draw_img
+    return (255 * draw_img).astype(np.uint8)
 
 
 def visualize_2d_image(image) -> np.ndarray:
-    """
-    Prepare a 2D image for visualization as RGB.
+    """Prepare a 2D image for visualization as RGB.
 
     Args:
         image: Image array of shape (H, W), can be torch tensor or numpy array
@@ -77,13 +68,11 @@ def visualize_2d_image(image) -> np.ndarray:
     """
     image = convert_to_numpy(image)
     draw_img = normalize_image_to_uint8(image)
-    draw_img = np.stack([draw_img, draw_img, draw_img], axis=-1)
-    return draw_img
+    return np.stack([draw_img, draw_img, draw_img], axis=-1)
 
 
 def visualize_one_slice_in_3d_image(image, axis: int = 2) -> np.ndarray:
-    """
-    Prepare a 2D slice from a 3D image for visualization as RGB.
+    """Prepare a 2D slice from a 3D image for visualization as RGB.
 
     Args:
         image: 3D image array of shape (H, W, D), can be torch tensor or numpy array
@@ -108,5 +97,4 @@ def visualize_one_slice_in_3d_image(image, axis: int = 2) -> np.ndarray:
         raise ValueError(f"axis should be in [0, 1, 2], got {axis}")
 
     draw_img = normalize_image_to_uint8(slice_img)
-    draw_img = np.stack([draw_img, draw_img, draw_img], axis=-1)
-    return draw_img
+    return np.stack([draw_img, draw_img, draw_img], axis=-1)

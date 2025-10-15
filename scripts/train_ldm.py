@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-"""
-Latent Diffusion Model (LDM) Training Script
+"""Latent Diffusion Model (LDM) Training Script.
 
-This script trains a conditional latent diffusion model for medical image synthesis.
-The model takes dental images as conditioning input and generates edentulous images.
+This script trains a conditional latent diffusion model for medical image synthesis. The model takes dental images as
+conditioning input and generates edentulous images.
 """
 
 import argparse
@@ -15,9 +14,9 @@ import time
 from pathlib import Path
 
 import numpy as np
+import tifffile
 import torch
 import torch.nn.functional as F
-import tifffile
 from monai.config import print_config
 from monai.inferers import LatentDiffusionInferer
 from monai.networks.schedulers import DDPMScheduler
@@ -27,7 +26,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
 from pti_ldm_vae.data import create_ldm_dataloaders
-from pti_ldm_vae.models import VAEModel, DiffusionUNet, create_condition_projector
+from pti_ldm_vae.models import DiffusionUNet, VAEModel, create_condition_projector
 from pti_ldm_vae.utils.distributed import setup_ddp
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
@@ -35,10 +34,18 @@ from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="LDM Training Script")
-    parser.add_argument("-e", "--environment-file", default="./config/environment_tif.json",
-                        help="Environment json file that stores environment paths")
-    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json",
-                        help="Config json file that stores hyper-parameters")
+    parser.add_argument(
+        "-e",
+        "--environment-file",
+        default="./config/environment_tif.json",
+        help="Environment json file that stores environment paths",
+    )
+    parser.add_argument(
+        "-c",
+        "--config-file",
+        default="./config/config_train_16g_cond.json",
+        help="Config json file that stores hyper-parameters",
+    )
     parser.add_argument("-g", "--gpus", default=1, type=int, help="Number of GPUs per node")
     return parser.parse_args()
 
@@ -68,8 +75,8 @@ def setup_environment(args):
 
 def load_config(args):
     """Load and merge configuration files."""
-    env_dict = json.load(open(args.environment_file, "r"))["ldm"]
-    config_dict = json.load(open(args.config_file, "r"))
+    env_dict = json.load(open(args.environment_file))["ldm"]
+    config_dict = json.load(open(args.config_file))
 
     for k, v in env_dict.items():
         setattr(args, k, v)
@@ -86,15 +93,14 @@ def load_vae_and_compute_scale(args, device, ddp_bool, dist, rank, train_loader)
     """Load pretrained VAE and compute latent space scale factor."""
     autoencoder = VAEModel.from_config(args.autoencoder_def).to(device)
 
-    map_location = {"cuda:%d" % 0: "cuda:%d" % rank}
+    map_location = {"cuda:0": f"cuda:{rank}"}
     autoencoder.load_state_dict(torch.load(args.autoencoder_path, map_location=map_location, weights_only=True))
     print(f"Rank {rank}: Loaded pretrained autoencoder from {args.autoencoder_path}")
 
     # Compute scale factor
-    with torch.no_grad():
-        with autocast("cuda", enabled=True):
-            check_data = first(train_loader)[0]
-            z = autoencoder.encode_stage_2_inputs(check_data.to(device))
+    with torch.no_grad(), autocast("cuda", enabled=True):
+        check_data = first(train_loader)[0]
+        z = autoencoder.encode_stage_2_inputs(check_data.to(device))
 
     scale_factor = 1 / torch.std(z)
     print(f"Rank {rank}: Local scale_factor: {scale_factor}")
@@ -115,18 +121,17 @@ def create_diffusion_models(args, device, ddp_bool, rank):
     """Create UNet and condition projector."""
     unet = DiffusionUNet.from_config(args.diffusion_def).to(device)
     condition_projector = create_condition_projector(
-        condition_input_dim=4,
-        cross_attention_dim=args.diffusion_def["cross_attention_dim"]
+        condition_input_dim=4, cross_attention_dim=args.diffusion_def["cross_attention_dim"]
     ).to(device)
 
     # Load checkpoint if requested
     if args.resume_ckpt:
         trained_diffusion_path = os.path.join(args.model_dir, "diffusion_unet.pt")
-        map_location = {"cuda:%d" % 0: "cuda:%d" % rank}
+        map_location = {"cuda:0": f"cuda:{rank}"}
         try:
             unet.load_state_dict(torch.load(trained_diffusion_path, map_location=map_location, weights_only=True))
             print(f"Rank {rank}: Loaded trained diffusion model from {trained_diffusion_path}")
-        except:
+        except FileNotFoundError:
             print(f"Rank {rank}: Train diffusion model from scratch")
 
     if ddp_bool:
@@ -147,9 +152,23 @@ def create_scheduler_and_inferer(args, scale_factor):
     return scheduler, inferer
 
 
-def train_epoch(epoch, train_loader, autoencoder, unet, condition_projector, inferer,
-                optimizer_diff, scaler, z_shape, device, rank, total_step, tensorboard_writer,
-                ddp_bool, max_epochs):
+def train_epoch(
+    epoch,
+    train_loader,
+    autoencoder,
+    unet,
+    condition_projector,
+    inferer,
+    optimizer_diff,
+    scaler,
+    z_shape,
+    device,
+    rank,
+    total_step,
+    tensorboard_writer,
+    ddp_bool,
+    max_epochs,
+):
     """Train for one epoch."""
     unet.train()
 
@@ -175,12 +194,11 @@ def train_epoch(epoch, train_loader, autoencoder, unet, condition_projector, inf
         optimizer_diff.zero_grad(set_to_none=True)
 
         with autocast("cuda", enabled=True):
-            noise_shape = [images.shape[0]] + list(z_shape[1:])
+            noise_shape = [images.shape[0], *list(z_shape[1:])]
             noise = torch.randn(noise_shape, dtype=images.dtype).to(device)
 
             timesteps = torch.randint(
-                0, inferer.scheduler.num_train_timesteps,
-                (images.shape[0],), device=images.device
+                0, inferer.scheduler.num_train_timesteps, (images.shape[0],), device=images.device
             ).long()
 
             noise_pred = inferer(
@@ -190,7 +208,7 @@ def train_epoch(epoch, train_loader, autoencoder, unet, condition_projector, inf
                 noise=noise,
                 timesteps=timesteps,
                 condition=condition_context,
-                mode="crossattn"
+                mode="crossattn",
             )
 
             loss = F.mse_loss(noise_pred.float(), noise.float())
@@ -205,16 +223,34 @@ def train_epoch(epoch, train_loader, autoencoder, unet, condition_projector, inf
 
             # Visualization at first step
             if step == 0:
-                visualize_training(images, condition_images, condition_context, inferer,
-                                 inferer_autoencoder, unet, z_shape, device,
-                                 tensorboard_writer, total_step)
+                visualize_training(
+                    images,
+                    condition_images,
+                    condition_context,
+                    inferer,
+                    inferer_autoencoder,
+                    unet,
+                    z_shape,
+                    device,
+                    tensorboard_writer,
+                    total_step,
+                )
 
     return total_step
 
 
-def visualize_training(images, condition_images, condition_context, inferer,
-                      inferer_autoencoder, unet, z_shape, device,
-                      tensorboard_writer, total_step):
+def visualize_training(
+    images,
+    condition_images,
+    condition_context,
+    inferer,
+    inferer_autoencoder,
+    unet,
+    z_shape,
+    device,
+    tensorboard_writer,
+    total_step,
+) -> None:
     """Visualize training progress."""
     with torch.no_grad():
         torch.manual_seed(42)
@@ -226,7 +262,7 @@ def visualize_training(images, condition_images, condition_context, inferer,
         cond_disp = torch.rot90(normalize_batch_for_display(cond), k=3, dims=[2, 3])[0]
         img_disp = torch.rot90(normalize_batch_for_display(img), k=3, dims=[2, 3])[0]
 
-        noise_shape = [1] + list(z_shape[1:])
+        noise_shape = [1, *list(z_shape[1:])]
         noise = torch.randn(noise_shape, dtype=images.dtype).to(device)
         z = inferer_autoencoder.encode_stage_2_inputs(images[0:1].to(device))
 
@@ -255,8 +291,21 @@ def visualize_training(images, condition_images, condition_context, inferer,
         tensorboard_writer.add_image("train_visu_4x2_noise_recon", full_visu, global_step=total_step)
 
 
-def validate(epoch, val_loader, autoencoder, unet, condition_projector, inferer, scheduler,
-            z_shape, args, device, rank, ddp_bool, tensorboard_writer):
+def validate(
+    epoch,
+    val_loader,
+    autoencoder,
+    unet,
+    condition_projector,
+    inferer,
+    scheduler,
+    z_shape,
+    args,
+    device,
+    rank,
+    ddp_bool,
+    tensorboard_writer,
+):
     """Run validation."""
     autoencoder.eval()
     unet.eval()
@@ -276,81 +325,77 @@ def validate(epoch, val_loader, autoencoder, unet, condition_projector, inferer,
         dir_image.mkdir(parents=True, exist_ok=True)
         dir_synth.mkdir(parents=True, exist_ok=True)
 
-    if ddp_bool:
-        inferer_autoencoder = autoencoder.module
-    else:
-        inferer_autoencoder = autoencoder
+    inferer_autoencoder = autoencoder.module if ddp_bool else autoencoder
 
-    with torch.no_grad():
-        with autocast("cuda", enabled=True):
-            for step, (images, condition_images) in enumerate(val_loader):
-                if step % 7 != 0:
-                    continue
+    with torch.no_grad(), autocast("cuda", enabled=True):
+        for step, (images, condition_images) in enumerate(val_loader):
+            if step % 7 != 0:
+                continue
 
-                if rank == 0:
-                    print(f"🔬 Validation epoch {epoch} - step {step}/{len(val_loader)}")
+            if rank == 0:
+                print(f"🔬 Validation epoch {epoch} - step {step}/{len(val_loader)}")
 
-                images = images.to(device)
-                condition_images = condition_images.to(device)
+            images = images.to(device)
+            condition_images = condition_images.to(device)
 
-                condition_latent = autoencoder.encode_stage_2_inputs(condition_images)
-                B, C, H, W = condition_latent.shape
-                condition_seq = condition_latent.permute(0, 2, 3, 1).reshape(B, H * W, C)
-                condition_context = condition_projector(condition_seq)
+            condition_latent = autoencoder.encode_stage_2_inputs(condition_images)
+            B, C, H, W = condition_latent.shape
+            condition_seq = condition_latent.permute(0, 2, 3, 1).reshape(B, H * W, C)
+            condition_context = condition_projector(condition_seq)
 
-                noise_shape = [images.shape[0]] + list(z_shape[1:])
-                noise = torch.randn(noise_shape, dtype=images.dtype).to(device)
+            noise_shape = [images.shape[0], *list(z_shape[1:])]
+            noise = torch.randn(noise_shape, dtype=images.dtype).to(device)
 
-                timesteps = torch.randint(
-                    0, inferer.scheduler.num_train_timesteps,
-                    (images.shape[0],), device=images.device
-                ).long()
+            timesteps = torch.randint(
+                0, inferer.scheduler.num_train_timesteps, (images.shape[0],), device=images.device
+            ).long()
 
-                noise_pred = inferer(
-                    inputs=images,
+            noise_pred = inferer(
+                inputs=images,
+                autoencoder_model=inferer_autoencoder,
+                diffusion_model=unet,
+                noise=noise,
+                timesteps=timesteps,
+                condition=condition_context[0:1, ...],
+                mode="crossattn",
+            )
+            val_loss = F.mse_loss(noise_pred.float(), noise.float())
+            val_recon_epoch_loss += val_loss
+            val_steps_used += 1
+
+            if rank == 0:
+                synthetic_images = inferer.sample(
+                    input_noise=noise[0:1, ...],
                     autoencoder_model=inferer_autoencoder,
                     diffusion_model=unet,
-                    noise=noise,
-                    timesteps=timesteps,
-                    condition=condition_context[0:1, ...],
-                    mode="crossattn"
+                    scheduler=scheduler,
+                    conditioning=condition_context[0:1, ...],
+                    mode="crossattn",
                 )
-                val_loss = F.mse_loss(noise_pred.float(), noise.float())
-                val_recon_epoch_loss += val_loss
-                val_steps_used += 1
 
-                if rank == 0:
-                    synthetic_images = inferer.sample(
-                        input_noise=noise[0:1, ...],
-                        autoencoder_model=inferer_autoencoder,
-                        diffusion_model=unet,
-                        scheduler=scheduler,
-                        conditioning=condition_context[0:1, ...],
-                        mode="crossattn"
+                cond = condition_images[0].unsqueeze(0).detach().cpu()
+                img = images[0].unsqueeze(0).detach().cpu()
+                recon = synthetic_images[0].unsqueeze(0).detach().cpu()
+                noise_cpu = noise[0].unsqueeze(0).detach().cpu()
+
+                noise_img = torch.clamp(
+                    inferer_autoencoder.decode_stage_2_outputs(noise_cpu.to(device)), min=-5, max=5
+                ).cpu()
+
+                if do_save_images:
+                    tifffile.imwrite(
+                        dir_image / f"step{step:03}.tif", torch.rot90(img[0].squeeze(), k=3, dims=[0, 1]).numpy()
+                    )
+                    tifffile.imwrite(
+                        dir_synth / f"step{step:03}.tif", torch.rot90(recon[0].squeeze(), k=3, dims=[0, 1]).numpy()
                     )
 
-                    cond = condition_images[0].unsqueeze(0).detach().cpu()
-                    img = images[0].unsqueeze(0).detach().cpu()
-                    recon = synthetic_images[0].unsqueeze(0).detach().cpu()
-                    noise_cpu = noise[0].unsqueeze(0).detach().cpu()
-
-                    noise_img = torch.clamp(
-                        inferer_autoencoder.decode_stage_2_outputs(noise_cpu.to(device)),
-                        min=-5, max=5
-                    ).cpu()
-
-                    if do_save_images:
-                        tifffile.imwrite(dir_image / f"step{step:03}.tif",
-                                       torch.rot90(img[0].squeeze(), k=3, dims=[0, 1]).numpy())
-                        tifffile.imwrite(dir_synth / f"step{step:03}.tif",
-                                       torch.rot90(recon[0].squeeze(), k=3, dims=[0, 1]).numpy())
-
-                    cond_disp = torch.rot90(normalize_batch_for_display(cond), k=3, dims=[2, 3])[0]
-                    img_disp = torch.rot90(normalize_batch_for_display(img), k=3, dims=[2, 3])[0]
-                    noise_disp = torch.rot90(normalize_batch_for_display(noise_img), k=3, dims=[2, 3])[0]
-                    recon_disp = torch.rot90(normalize_batch_for_display(recon), k=3, dims=[2, 3])[0]
-                    quatuor = torch.cat([cond_disp, img_disp, noise_disp, recon_disp], dim=2)
-                    quatuors.append((step, quatuor))
+                cond_disp = torch.rot90(normalize_batch_for_display(cond), k=3, dims=[2, 3])[0]
+                img_disp = torch.rot90(normalize_batch_for_display(img), k=3, dims=[2, 3])[0]
+                noise_disp = torch.rot90(normalize_batch_for_display(noise_img), k=3, dims=[2, 3])[0]
+                recon_disp = torch.rot90(normalize_batch_for_display(recon), k=3, dims=[2, 3])[0]
+                quatuor = torch.cat([cond_disp, img_disp, noise_disp, recon_disp], dim=2)
+                quatuors.append((step, quatuor))
 
     val_recon_epoch_loss = val_recon_epoch_loss / val_steps_used
 
@@ -362,8 +407,19 @@ def validate(epoch, val_loader, autoencoder, unet, condition_projector, inferer,
     return val_recon_epoch_loss
 
 
-def save_checkpoint(epoch, unet, condition_projector, optimizer_diff, val_loss, total_step,
-                   best_val_loss, best_epoch_saved, args, ddp_bool, rank):
+def save_checkpoint(
+    epoch,
+    unet,
+    condition_projector,
+    optimizer_diff,
+    val_loss,
+    total_step,
+    best_val_loss,
+    best_epoch_saved,
+    args,
+    ddp_bool,
+    rank,
+):
     """Save model checkpoints."""
     if rank != 0 or epoch < 10:
         return best_val_loss, best_epoch_saved
@@ -388,17 +444,20 @@ def save_checkpoint(epoch, unet, condition_projector, optimizer_diff, val_loss, 
 
         torch.save(
             unet.module.state_dict() if ddp_bool else unet.state_dict(),
-            os.path.join(args.model_dir, f"diffusion_unet_epoch{epoch}.pth")
+            os.path.join(args.model_dir, f"diffusion_unet_epoch{epoch}.pth"),
         )
 
-        torch.save({
-            'epoch': epoch,
-            'unet_state_dict': unet.module.state_dict() if ddp_bool else unet.state_dict(),
-            'condition_projector_state_dict': condition_projector.state_dict(),
-            'optimizer_state_dict': optimizer_diff.state_dict(),
-            'best_val_loss': val_loss,
-            'total_step': total_step,
-        }, os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth"))
+        torch.save(
+            {
+                "epoch": epoch,
+                "unet_state_dict": unet.module.state_dict() if ddp_bool else unet.state_dict(),
+                "condition_projector_state_dict": condition_projector.state_dict(),
+                "optimizer_state_dict": optimizer_diff.state_dict(),
+                "best_val_loss": val_loss,
+                "total_step": total_step,
+            },
+            os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth"),
+        )
 
         print(f"✅ Best models saved for epoch {epoch}")
         return val_loss, epoch
@@ -406,7 +465,7 @@ def save_checkpoint(epoch, unet, condition_projector, optimizer_diff, val_loss, 
     return best_val_loss, best_epoch_saved
 
 
-def main():
+def main() -> None:
     args = parse_args()
     ddp_bool, rank, world_size, device, dist = setup_environment(args)
     args = load_config(args)
@@ -427,9 +486,7 @@ def main():
     )
 
     # Load VAE and compute scale factor
-    autoencoder, scale_factor, z = load_vae_and_compute_scale(
-        args, device, ddp_bool, dist, rank, train_loader
-    )
+    autoencoder, scale_factor, z = load_vae_and_compute_scale(args, device, ddp_bool, dist, rank, train_loader)
 
     # Create diffusion models
     unet, condition_projector = create_diffusion_models(args, device, ddp_bool, rank)
@@ -439,8 +496,7 @@ def main():
 
     # Create optimizer
     optimizer_diff = torch.optim.Adam(
-        list(unet.parameters()) + list(condition_projector.parameters()),
-        lr=args.diffusion_train["lr"] * world_size
+        list(unet.parameters()) + list(condition_projector.parameters()), lr=args.diffusion_train["lr"] * world_size
     )
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer_diff,
@@ -466,14 +522,26 @@ def main():
     for epoch in range(start_epoch, max_epochs):
         start_time = time.time()
         if rank == 0:
-            print(f"\n📅 Starting epoch {epoch}/{max_epochs-1}")
+            print(f"\n📅 Starting epoch {epoch}/{max_epochs - 1}")
 
         lr_scheduler.step()
 
         total_step = train_epoch(
-            epoch, train_loader, autoencoder, unet, condition_projector, inferer,
-            optimizer_diff, scaler, z.shape, device, rank, total_step,
-            tensorboard_writer if rank == 0 else None, ddp_bool, max_epochs
+            epoch,
+            train_loader,
+            autoencoder,
+            unet,
+            condition_projector,
+            inferer,
+            optimizer_diff,
+            scaler,
+            z.shape,
+            device,
+            rank,
+            total_step,
+            tensorboard_writer if rank == 0 else None,
+            ddp_bool,
+            max_epochs,
         )
 
         # Validation
@@ -485,17 +553,36 @@ def main():
                 print(f"\n🔍 Starting validation at epoch {epoch}")
 
             val_loss = validate(
-                epoch, val_loader, autoencoder, unet, condition_projector, inferer, scheduler,
-                z.shape, args, device, rank, ddp_bool,
-                tensorboard_writer if rank == 0 else None
+                epoch,
+                val_loader,
+                autoencoder,
+                unet,
+                condition_projector,
+                inferer,
+                scheduler,
+                z.shape,
+                args,
+                device,
+                rank,
+                ddp_bool,
+                tensorboard_writer if rank == 0 else None,
             )
 
             if rank == 0:
                 print(f"Epoch {epoch} val_loss: {val_loss:.4f} | Time: {time.time() - start_time:.1f}s")
 
             best_val_loss, best_epoch_saved = save_checkpoint(
-                epoch, unet, condition_projector, optimizer_diff, val_loss, total_step,
-                best_val_loss, best_epoch_saved, args, ddp_bool, rank
+                epoch,
+                unet,
+                condition_projector,
+                optimizer_diff,
+                val_loss,
+                total_step,
+                best_val_loss,
+                best_epoch_saved,
+                args,
+                ddp_bool,
+                rank,
             )
 
 

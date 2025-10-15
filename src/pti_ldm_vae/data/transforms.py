@@ -1,19 +1,18 @@
-import torch
+from typing import Any
+
 import numpy as np
-from typing import List, Dict, Any, Tuple
+import torch
 
 
 class LocalNormalizeByMask:
-    """
-    Normalize image intensity excluding background (zero pixels).
+    """Normalize image intensity excluding background (zero pixels).
 
-    This transform computes mean and standard deviation only on non-zero pixels,
-    then normalizes the entire image while keeping background at zero.
+    This transform computes mean and standard deviation only on non-zero pixels, then normalizes the entire image while
+    keeping background at zero.
     """
 
     def __call__(self, img: np.ndarray | torch.Tensor) -> np.ndarray:
-        """
-        Apply local normalization by mask.
+        """Apply local normalization by mask.
 
         Args:
             img: Input image (numpy array or torch tensor)
@@ -33,15 +32,13 @@ class LocalNormalizeByMask:
 
 
 class ApplyLocalNormd:
-    """
-    Dictionary version of LocalNormalizeByMask for MONAI pipelines.
+    """Dictionary version of LocalNormalizeByMask for MONAI pipelines.
 
     Applies LocalNormalizeByMask to specified keys in a data dictionary.
     """
 
-    def __init__(self, keys: List[str]):
-        """
-        Initialize transform.
+    def __init__(self, keys: list[str]) -> None:
+        """Initialize transform.
 
         Args:
             keys: List of dictionary keys to apply normalization to
@@ -49,9 +46,8 @@ class ApplyLocalNormd:
         self.keys = keys
         self.norm = LocalNormalizeByMask()
 
-    def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Apply normalization to specified keys.
+    def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Apply normalization to specified keys.
 
         Args:
             data: Dictionary containing images
@@ -65,24 +61,21 @@ class ApplyLocalNormd:
 
 
 class ToTuple:
-    """
-    Convert dictionary to tuple for dataloaders that return tuples.
+    """Convert dictionary to tuple for dataloaders that return tuples.
 
     Used for LDM dataloaders which return (image, condition_image) tuples.
     """
 
-    def __init__(self, keys: List[str]):
-        """
-        Initialize transform.
+    def __init__(self, keys: list[str]) -> None:
+        """Initialize transform.
 
         Args:
             keys: List of dictionary keys in desired output order
         """
         self.keys = keys
 
-    def __call__(self, data: Dict[str, Any]) -> Tuple:
-        """
-        Convert dictionary to tuple.
+    def __call__(self, data: dict[str, Any]) -> tuple:
+        """Convert dictionary to tuple.
 
         Args:
             data: Dictionary containing data

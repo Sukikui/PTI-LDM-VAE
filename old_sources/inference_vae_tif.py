@@ -1,30 +1,23 @@
 import json
 import logging
-import tifffile
-from pathlib import Path
-import torch
-import numpy as np
-from torchsummary import summary
-from monai.config import print_config
-from monai.utils import set_determinism
-from utils_tif import define_instance
-from PIL import Image
 import sys
-from monai.data import Dataset, DataLoader
+from pathlib import Path
+
+import numpy as np
+import tifffile
+import torch
+from monai.config import print_config
+from monai.data import DataLoader, Dataset
 from monai.transforms import (
     Compose,
-    LoadImage,
     EnsureChannelFirst,
-    Resize,
-    ScaleIntensity,
-    ToTensor,
-    NormalizeIntensity,
     EnsureType,
+    LoadImage,
+    Resize,
 )
-
-
-from torchvision.utils import make_grid
-
+from monai.utils import set_determinism
+from PIL import Image
+from utils_tif import define_instance
 
 # === 🔧 À MODIFIER ICI =====================================================
 
@@ -56,6 +49,7 @@ class LocalNormalizeByMask:
         img_norm[~mask] = 0.0
         return img_norm.astype(np.float32)
 
+
 def normalize_batch_for_display(tensor, low=2, high=98):
     np_img = tensor.detach().cpu().numpy()
     normed = []
@@ -80,18 +74,21 @@ def normalize_batch_for_display(tensor, low=2, high=98):
     normed_tensor = torch.tensor(np.stack(normed))
     return normed_tensor
 
+
 def prepare_tif_dataloader_vae(image_paths, batch_size, patch_size):
     if len(image_paths) == 0:
         raise FileNotFoundError("Aucune image .tif trouvée dans les chemins fournis")
 
     compute_dtype = torch.float32  # ou float16 si amp
-    transforms = Compose([
-        LoadImage(image_only=True),
-        EnsureChannelFirst(),
-        Resize(patch_size),
-        LocalNormalizeByMask(),
-        EnsureType(dtype=compute_dtype),
-    ])
+    transforms = Compose(
+        [
+            LoadImage(image_only=True),
+            EnsureChannelFirst(),
+            Resize(patch_size),
+            LocalNormalizeByMask(),
+            EnsureType(dtype=compute_dtype),
+        ]
+    )
 
     inf_ds = Dataset(data=image_paths, transform=transforms)
     inf_loader = DataLoader(inf_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
@@ -107,16 +104,17 @@ def prepare_tif_dataloader_vae(image_paths, batch_size, patch_size):
 #     return torch.tensor(img, dtype=torch.float32)
 
 
-
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_config()
     set_determinism(42)
 
-    env_dict = json.load(open(environment_file, "r"))
-    config_dict = json.load(open(config_file, "r"))
+    env_dict = json.load(open(environment_file))
+    config_dict = json.load(open(config_file))
 
-    class Args: pass
+    class Args:
+        pass
+
     args = Args()
     for k, v in env_dict.items():
         setattr(args, k, v)
@@ -146,18 +144,16 @@ def main():
 
     autoencoder.eval()
 
-
     # # Charger les images
     # image_paths = sorted(input_dir.glob("*.tif"))
     # print(f"🖼️ {len(image_paths)} images trouvées.")
 
-    # Charger les images vues à l'entraînement pour verif 
+    # Charger les images vues à l'entraînement pour verif
     import random  # ajoute en haut du fichier si ce n’est pas déjà fait
 
     image_paths = sorted(input_dir.glob("*.tif"))
     random.seed(42)  # pour reproductibilité
     image_paths = random.sample(image_paths, 20)
-
 
     # Charger les images via le même pipeline que pour le train/val
     inf_loader = prepare_tif_dataloader_vae(
@@ -193,7 +189,6 @@ def main():
             Image.fromarray(array).save(out_png / f"image{(i * args.autoencoder_train['batch_size']) + j}.png")
 
     print(f"✅ Inférence terminée. Résultats dans : {out_dir}")
-
 
 
 if __name__ == "__main__":

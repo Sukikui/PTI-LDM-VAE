@@ -12,23 +12,32 @@ from monai.config import print_config
 from monai.losses import PatchAdversarialLoss, PerceptualLoss
 from monai.networks.nets import PatchDiscriminator
 from monai.utils import set_determinism
-from pti_ldm_vae.data import create_vae_dataloaders
-from pti_ldm_vae.models import VAEModel, compute_kl_loss
-from pti_ldm_vae.utils.distributed import setup_ddp
-from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 from torch.nn import L1Loss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+from pti_ldm_vae.data import create_vae_dataloaders
+from pti_ldm_vae.models import VAEModel, compute_kl_loss
+from pti_ldm_vae.utils.distributed import setup_ddp
+from pti_ldm_vae.utils.visualization import normalize_batch_for_display
+
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="VAE Training Script")
-    parser.add_argument("-e", "--environment-file", default="./config/environment_tif.json",
-                        help="Environment json file that stores environment paths")
-    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json",
-                        help="Config json file that stores hyper-parameters")
+    parser.add_argument(
+        "-e",
+        "--environment-file",
+        default="./config/environment_tif.json",
+        help="Environment json file that stores environment paths",
+    )
+    parser.add_argument(
+        "-c",
+        "--config-file",
+        default="./config/config_train_16g_cond.json",
+        help="Config json file that stores hyper-parameters",
+    )
     parser.add_argument("-g", "--gpus", default=1, type=int, help="Number of GPUs per node")
     return parser.parse_args()
 
@@ -59,8 +68,8 @@ def setup_environment(args):
 
 def load_config(args):
     """Load and merge configuration files."""
-    env_dict = json.load(open(args.environment_file, "r"))["vae"]
-    config_dict = json.load(open(args.config_file, "r"))
+    env_dict = json.load(open(args.environment_file))["vae"]
+    config_dict = json.load(open(args.config_file))
 
     for k, v in env_dict.items():
         setattr(args, k, v)
@@ -139,16 +148,31 @@ def load_checkpoint(args, autoencoder, discriminator, optimizer_g, optimizer_d, 
 
             print(f"[INFO] Resuming from epoch {start_epoch} | best_val_loss = {best_val_loss:.4f}")
             return start_epoch, best_val_loss, total_step, checkpoint["epoch"]
-        else:
-            raise FileNotFoundError(f"[ERROR] Checkpoint not found: {checkpoint_path}")
-    else:
-        print("[INFO] Training from scratch")
-        return 0, 100.0, 0, None
+        raise FileNotFoundError(f"[ERROR] Checkpoint not found: {checkpoint_path}")
+    print("[INFO] Training from scratch")
+    return 0, 100.0, 0, None
 
 
-def train_epoch(epoch, train_loader, autoencoder, discriminator, optimizer_g, optimizer_d,
-                intensity_loss, adv_loss, loss_perceptual, kl_weight, perceptual_weight,
-                adv_weight, device, rank, total_step, tensorboard_writer, ddp_bool, max_epochs):
+def train_epoch(
+    epoch,
+    train_loader,
+    autoencoder,
+    discriminator,
+    optimizer_g,
+    optimizer_d,
+    intensity_loss,
+    adv_loss,
+    loss_perceptual,
+    kl_weight,
+    perceptual_weight,
+    adv_weight,
+    device,
+    rank,
+    total_step,
+    tensorboard_writer,
+    ddp_bool,
+    max_epochs,
+):
     """Train for one epoch."""
     autoencoder.train()
     discriminator.train()
@@ -156,7 +180,7 @@ def train_epoch(epoch, train_loader, autoencoder, discriminator, optimizer_g, op
     if ddp_bool:
         train_loader.sampler.set_epoch(epoch)
 
-    for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{max_epochs}")):
+    for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{max_epochs}")):
         images = batch.to(device)
 
         # Train generator
@@ -209,8 +233,19 @@ def train_epoch(epoch, train_loader, autoencoder, discriminator, optimizer_g, op
     return total_step
 
 
-def validate(epoch, val_loader, autoencoder, intensity_loss, loss_perceptual, perceptual_weight,
-             args, device, rank, ddp_bool, tensorboard_writer):
+def validate(
+    epoch,
+    val_loader,
+    autoencoder,
+    intensity_loss,
+    loss_perceptual,
+    perceptual_weight,
+    args,
+    device,
+    rank,
+    ddp_bool,
+    tensorboard_writer,
+):
     """Run validation."""
     autoencoder.eval()
     val_recon_epoch_loss = 0
@@ -236,8 +271,9 @@ def validate(epoch, val_loader, autoencoder, intensity_loss, loss_perceptual, pe
 
         with torch.no_grad():
             reconstruction, z_mu, z_sigma = autoencoder(images)
-            recons_loss = intensity_loss(reconstruction.float(), images.float()) + \
-                          perceptual_weight * loss_perceptual(reconstruction.float(), images.float())
+            recons_loss = intensity_loss(reconstruction.float(), images.float()) + perceptual_weight * loss_perceptual(
+                reconstruction.float(), images.float()
+            )
 
         val_recon_epoch_loss += recons_loss.item()
 
@@ -268,8 +304,19 @@ def validate(epoch, val_loader, autoencoder, intensity_loss, loss_perceptual, pe
     return val_recon_epoch_loss
 
 
-def save_checkpoint(epoch, autoencoder, discriminator, optimizer_g, optimizer_d,
-                   val_loss, total_step, best_epoch_saved, args, ddp_bool, rank):
+def save_checkpoint(
+    epoch,
+    autoencoder,
+    discriminator,
+    optimizer_g,
+    optimizer_d,
+    val_loss,
+    total_step,
+    best_epoch_saved,
+    args,
+    ddp_bool,
+    rank,
+):
     """Save model checkpoints."""
     if rank != 0 or epoch < 10:
         return best_epoch_saved
@@ -288,8 +335,20 @@ def save_checkpoint(epoch, autoencoder, discriminator, optimizer_g, optimizer_d,
     return best_epoch_saved
 
 
-def save_best_checkpoint(epoch, autoencoder, discriminator, optimizer_g, optimizer_d,
-                        val_loss, total_step, best_val_loss, best_epoch_saved, args, ddp_bool, rank):
+def save_best_checkpoint(
+    epoch,
+    autoencoder,
+    discriminator,
+    optimizer_g,
+    optimizer_d,
+    val_loss,
+    total_step,
+    best_val_loss,
+    best_epoch_saved,
+    args,
+    ddp_bool,
+    rank,
+):
     """Save best model checkpoint."""
     if rank != 0 or epoch < 10:
         return best_val_loss, best_epoch_saved
@@ -310,33 +369,32 @@ def save_best_checkpoint(epoch, autoencoder, discriminator, optimizer_g, optimiz
 
     # Save new best
     if ddp_bool:
-        torch.save(autoencoder.module.state_dict(),
-                  os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
-        torch.save(discriminator.module.state_dict(),
-                  os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+        torch.save(autoencoder.module.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
+        torch.save(discriminator.module.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
     else:
-        torch.save(autoencoder.state_dict(),
-                  os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
-        torch.save(discriminator.state_dict(),
-                  os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+        torch.save(autoencoder.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
+        torch.save(discriminator.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
 
     checkpoint_path = os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth")
-    torch.save({
-        'epoch': epoch,
-        'autoencoder_state_dict': autoencoder.module.state_dict() if ddp_bool else autoencoder.state_dict(),
-        'discriminator_state_dict': discriminator.module.state_dict() if ddp_bool else discriminator.state_dict(),
-        'optimizer_g_state_dict': optimizer_g.state_dict(),
-        'optimizer_d_state_dict': optimizer_d.state_dict(),
-        'best_val_loss': val_loss,
-        'total_step': total_step,
-    }, checkpoint_path)
+    torch.save(
+        {
+            "epoch": epoch,
+            "autoencoder_state_dict": autoencoder.module.state_dict() if ddp_bool else autoencoder.state_dict(),
+            "discriminator_state_dict": discriminator.module.state_dict() if ddp_bool else discriminator.state_dict(),
+            "optimizer_g_state_dict": optimizer_g.state_dict(),
+            "optimizer_d_state_dict": optimizer_d.state_dict(),
+            "best_val_loss": val_loss,
+            "total_step": total_step,
+        },
+        checkpoint_path,
+    )
 
     print(f"✅ Best models saved for epoch {epoch}")
 
     return val_loss, epoch
 
 
-def main():
+def main() -> None:
     args = parse_args()
     ddp_bool, rank, world_size, device, dist = setup_environment(args)
     args = load_config(args)
@@ -361,12 +419,14 @@ def main():
     autoencoder, discriminator = create_models(args, device, ddp_bool, rank)
 
     # Create losses and optimizers
-    intensity_loss, adv_loss, loss_perceptual, optimizer_g, optimizer_d = \
-        create_losses_and_optimizers(args, autoencoder, discriminator, device, world_size, rank)
+    intensity_loss, adv_loss, loss_perceptual, optimizer_g, optimizer_d = create_losses_and_optimizers(
+        args, autoencoder, discriminator, device, world_size, rank
+    )
 
     # Load checkpoint
-    start_epoch, best_val_loss, total_step, best_epoch_saved = \
-        load_checkpoint(args, autoencoder, discriminator, optimizer_g, optimizer_d, device, ddp_bool)
+    start_epoch, best_val_loss, total_step, best_epoch_saved = load_checkpoint(
+        args, autoencoder, discriminator, optimizer_g, optimizer_d, device, ddp_bool
+    )
 
     # Tensorboard
     if rank == 0:
@@ -384,10 +444,24 @@ def main():
         start_time = time.time()
 
         total_step = train_epoch(
-            epoch, train_loader, autoencoder, discriminator, optimizer_g, optimizer_d,
-            intensity_loss, adv_loss, loss_perceptual, kl_weight, perceptual_weight,
-            adv_weight, device, rank, total_step, tensorboard_writer if rank == 0 else None,
-            ddp_bool, max_epochs
+            epoch,
+            train_loader,
+            autoencoder,
+            discriminator,
+            optimizer_g,
+            optimizer_d,
+            intensity_loss,
+            adv_loss,
+            loss_perceptual,
+            kl_weight,
+            perceptual_weight,
+            adv_weight,
+            device,
+            rank,
+            total_step,
+            tensorboard_writer if rank == 0 else None,
+            ddp_bool,
+            max_epochs,
         )
 
         # Validation
@@ -396,22 +470,49 @@ def main():
                 val_loader.sampler.set_epoch(epoch)
 
             val_loss = validate(
-                epoch, val_loader, autoencoder, intensity_loss, loss_perceptual,
-                perceptual_weight, args, device, rank, ddp_bool,
-                tensorboard_writer if rank == 0 else None
+                epoch,
+                val_loader,
+                autoencoder,
+                intensity_loss,
+                loss_perceptual,
+                perceptual_weight,
+                args,
+                device,
+                rank,
+                ddp_bool,
+                tensorboard_writer if rank == 0 else None,
             )
 
             if rank == 0:
                 print(f"Epoch {epoch} val_loss: {val_loss:.4f} | Time: {time.time() - start_time:.1f}s")
 
             best_epoch_saved = save_checkpoint(
-                epoch, autoencoder, discriminator, optimizer_g, optimizer_d,
-                val_loss, total_step, best_epoch_saved, args, ddp_bool, rank
+                epoch,
+                autoencoder,
+                discriminator,
+                optimizer_g,
+                optimizer_d,
+                val_loss,
+                total_step,
+                best_epoch_saved,
+                args,
+                ddp_bool,
+                rank,
             )
 
             best_val_loss, best_epoch_saved = save_best_checkpoint(
-                epoch, autoencoder, discriminator, optimizer_g, optimizer_d,
-                val_loss, total_step, best_val_loss, best_epoch_saved, args, ddp_bool, rank
+                epoch,
+                autoencoder,
+                discriminator,
+                optimizer_g,
+                optimizer_d,
+                val_loss,
+                total_step,
+                best_val_loss,
+                best_epoch_saved,
+                args,
+                ddp_bool,
+                rank,
             )
 
 
