@@ -1,6 +1,6 @@
 # PTI-LDM-VAE
 
-Pipeline complet d'entraînement et d'inférence pour la génération d'images médicales TIF à l'aide d'un Variational Autoencoder (VAE) couplé à un Latent Diffusion Model (LDM) conditionné.
+Pipeline complete d'entraînement et d'inférence pour la génération d'images médicales TIF à l'aide d'un Variational Autoencoder (VAE) couplé à un Latent Diffusion Model (LDM) conditionné.
 
 ## Description
 
@@ -81,6 +81,7 @@ pip install -r requirements.txt
 ### Installation de PyTorch
 
 Installer PyTorch selon votre configuration (OS, CUDA) :
+
 ```bash
 # Exemple pour CUDA 11.8
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
@@ -111,11 +112,13 @@ python train_autoencoder_tif.py \
 ```
 
 **Sorties** :
+
 - `trained_weights/autoencoder/` : Poids du modèle (`.pth`)
 - `tfevent/` : Logs TensorBoard
 - `validation_samples/` : Échantillons de validation
 
 **Options** :
+
 - `--gpus N` : Nombre de GPUs (active DDP si > 1)
 
 ### 2. Entraînement du LDM conditionné
@@ -132,6 +135,7 @@ python train_diffusion_tif_cond.py \
 Le script charge automatiquement le VAE pré-entraîné spécifié dans `environment_tif.json`.
 
 **Sorties par epoch** :
+
 - `validation_samples/epoch_N/edente/` : Ground truth
 - `validation_samples/epoch_N/edente_synth/` : Images générées
 - `trained_weights/diffusion_unet_epochN.pth` : Meilleurs poids
@@ -146,11 +150,13 @@ python inference_vae_tif.py
 ```
 
 **À configurer dans le script** (lignes 30-42) :
+
 - `weights_path` : Chemin vers le checkpoint du VAE
 - `input_dir` : Dossier contenant les images TIF d'entrée
 - `description` : Description pour le nom du dossier de sortie
 
 **Sorties** :
+
 - `inference_<nom>_<epoch>_<description>/résultats_tif/` : Résultats en TIF
 - `inference_<nom>_<epoch>_<description>/résultats_png/` : Visualisations PNG
 
@@ -163,6 +169,7 @@ python compute_metrics_class_tif.py
 ```
 
 **Structure attendue des dossiers** :
+
 ```
 <run_dir>/validation_samples/epoch_N/
 ├── edente/              # Ground truth
@@ -174,10 +181,12 @@ python compute_metrics_class_tif.py
 ```
 
 **À configurer dans le script** (section `main`) :
+
 - `folder_path` : Chemin vers le dossier d'exécution
 - `num_epoch` : Numéro d'epoch à analyser
 
 **Métriques calculées** :
+
 - PSNR (Peak Signal-to-Noise Ratio)
 - SSIM (Structural Similarity Index)
 - Dice coefficient
@@ -185,6 +194,7 @@ python compute_metrics_class_tif.py
 - Métriques géométriques (dimensions, excentricité, etc.)
 
 **Sorties** :
+
 - `*_metrics.csv` : Métriques par image
 - `*_dimensions.csv` : Dimensions des objets
 - `*_metrics_distribution.png` : Distributions des métriques
@@ -198,6 +208,7 @@ python umap_latent_vae.py
 ```
 
 **À configurer dans le script** :
+
 - `vae_weights` : Chemin vers les poids du VAE
 - `folder_edentee` / `folder_dentee` : Dossiers d'images
 - `max_images` : Nombre maximum d'images à encoder
@@ -211,6 +222,7 @@ python tsne_latent_vae.py
 Configuration similaire à UMAP.
 
 **Sorties** :
+
 - Visualisation 2D de l'espace latent
 - Fichier de légende des couleurs (si mode par examen activé)
 
@@ -223,6 +235,7 @@ tensorboard --logdir=<run_dir>/tfevent
 ```
 
 **Visualisations disponibles** :
+
 - Courbes de loss (train/validation)
 - Triplets d'images (original, reconstruction, différence)
 - Grilles de validation avec bruitages intermédiaires
@@ -242,6 +255,7 @@ Les deux scripts d'entraînement supportent la reprise depuis un checkpoint :
 ```
 
 Le checkpoint contient :
+
 - États des modèles (autoencoder, discriminator/unet)
 - États des optimiseurs
 - Meilleure validation loss
@@ -330,11 +344,13 @@ Licensed under the Apache License, Version 2.0
 ## Contact
 
 Pour toute question sur le code ou la méthodologie :
+
 - **Tuong Vy PHAM** : tv.pham1996@gmail.com
 
 ## Références
 
 Le code s'appuie sur :
+
 - [MONAI](https://monai.io/) - Medical Open Network for AI
 - [Latent Diffusion Models](https://arxiv.org/abs/2112.10752) - Rombach et al.
 - [Auto-Encoding Variational Bayes](https://arxiv.org/abs/1312.6114) - Kingma & Welling
@@ -342,21 +358,25 @@ Le code s'appuie sur :
 ## Troubleshooting
 
 ### Erreur CUDA Out of Memory
+
 - Réduire `batch_size` dans la config
 - Réduire `patch_size`
 - Activer gradient checkpointing (si disponible dans le modèle)
 
 ### Reconstruction floue (VAE)
+
 - Augmenter `perceptual_weight`
 - Réduire `kl_weight`
 - Augmenter le nombre de canaux
 
 ### LDM ne converge pas
+
 - Vérifier que le `scale_factor` est proche de 1
 - Vérifier la qualité du VAE pré-entraîné
 - Augmenter `num_train_timesteps`
 
 ### Images de validation noires
+
 - Vérifier la normalisation des données
 - Vérifier que le masque (pixels non-nuls) est correct
 - Ajuster les percentiles dans `normalize_batch_for_display`

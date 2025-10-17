@@ -12,6 +12,7 @@
 
 # Claude
 .claude/
+CLAUDE.md
 
 # Gemini
 .gemini/
@@ -37,9 +38,13 @@ wheels/
 *.tif
 
 # Model checkpoint files
+*.pt
 *.pth
 *.ckpt
 *.ptEn
+
+# VAE latents cache
+cache/
 
 # Personal files and directories
 TODO.md

@@ -9,35 +9,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from glob import glob
-from monai.transforms import (
-    Compose,
-    LoadImage,
-    EnsureChannelFirst,
-    Resize,
-    ScaleIntensity,
-    ToTensor,
-    NormalizeIntensity,
-    EnsureType,
-    LoadImaged,
-    EnsureChannelFirstd,
-    ResizeD,
-    EnsureTyped,
-)
-from monai.data import Dataset
-from augmentation_utils import get_albumentations_transform, DataLoader
+import os
 from datetime import timedelta
-from monai.bundle import ConfigParser
-import torch.distributed as dist
+from glob import glob
 
 import numpy as np
 import torch
-
-import tifffile
-from torch.utils.data import Dataset
-import albumentations as A
-import numpy as np
-import os
+import torch.distributed as dist
+from monai.bundle import ConfigParser
+from monai.data import DataLoader, Dataset
+from monai.transforms import (
+    Compose,
+    EnsureChannelFirst,
+    EnsureChannelFirstd,
+    EnsureType,
+    EnsureTyped,
+    LoadImage,
+    LoadImaged,
+    Resize,
+)
 
 
 def setup_ddp(rank, world_size):
@@ -67,6 +57,7 @@ class LocalNormalizeByMask:
         img_norm[~mask] = 0.0
         return img_norm.astype(np.float32)
 
+
 class ApplyLocalNormd:
     def __init__(self, keys):
         self.keys = keys
@@ -76,6 +67,7 @@ class ApplyLocalNormd:
         for k in self.keys:
             data[k] = torch.tensor(self.norm(data[k]))
         return data
+
 
 class ToTuple:
     def __init__(self, keys):
@@ -99,7 +91,6 @@ def prepare_tif_dataloader_ldm(
     size_divisible=1,
     num_center_slice=None,
 ):
-    augment = getattr(args, 'augment', False)
     dir_edente = os.path.join(args.data_base_dir, "edente")
     dir_dente = os.path.join(args.data_base_dir, "dente")
 
@@ -111,36 +102,20 @@ def prepare_tif_dataloader_ldm(
     if len(tif_paths_edente) != len(tif_paths_dente):
         raise ValueError("Les dossiers denté et édenté doivent contenir le même nombre d'images.")
 
-    paired_data = [{"image": e, "condition_image": d} for e, d in zip(tif_paths_edente, tif_paths_dente)]
+    paired_data = [{"image": e, "condition_image": d} for e, d in zip(tif_paths_edente, tif_paths_dente, strict=False)]
     split_idx = int(0.9 * len(paired_data))
     train_data = paired_data[:split_idx]
     val_data = paired_data[split_idx:]
 
-    if augment:
-        albumentations_transform = get_albumentations_transform()
-
-        class AugAlb:
-            def __call__(self, data):
-                img = data['image'].squeeze(0).numpy()
-                cond = data['condition_image'].squeeze(0).numpy()
-                aug = albumentations_transform(image=img, condition_image=cond)
-                data['image'] = torch.from_numpy(aug['image'][None, ...])
-                data['condition_image'] = torch.from_numpy(aug['condition_image'][None, ...])
-                return data
-
-        aug_monai = AugAlb()
-    else:
-        aug_monai = lambda x: x
-
-    transforms = Compose([
-        LoadImaged(keys=["image", "condition_image"]),
-        EnsureChannelFirstd(keys=["image", "condition_image"]),
-        ResizeD(keys=["image", "condition_image"], spatial_size=patch_size),
-        EnsureTyped(keys=["image", "condition_image"], dtype=torch.float32),
-        ApplyLocalNormd(keys=["image", "condition_image"]),
-        aug_monai,
-        ToTuple(keys=["image", "condition_image"]),  # ⬅️ ici on retourne un tuple
-    ])
+    transforms = Compose(
+        [
+            LoadImaged(keys=["image", "condition_image"]),
+            EnsureChannelFirstd(keys=["image", "condition_image"]),
+            EnsureTyped(keys=["image", "condition_image"], dtype=torch.float32),
+            ApplyLocalNormd(keys=["image", "condition_image"]),
+            ToTuple(keys=["image", "condition_image"]),  # ⬅️ ici on retourne un tuple
+        ]
+    )
 
     train_ds = Dataset(data=train_data, transform=transforms)
     val_ds = Dataset(data=val_data, transform=transforms)
@@ -153,7 +128,6 @@ def prepare_tif_dataloader_ldm(
         print(f"[LDM] Image shape: {sample[0].shape}, Condition shape: {sample[1].shape}")
 
     return train_loader, val_loader
-
 
 
 def prepare_tif_dataloader_vae(
@@ -170,8 +144,7 @@ def prepare_tif_dataloader_vae(
     size_divisible=1,
     num_center_slice=None,
 ):
-    augment = getattr(args, 'augment', False)
-    data_dir = os.path.join(args.data_base_dir, "edente")  
+    data_dir = os.path.join(args.data_base_dir, "edente")
     tif_paths = sorted(glob(os.path.join(data_dir, "*.tif")))
 
     if len(tif_paths) == 0:
@@ -185,37 +158,21 @@ def prepare_tif_dataloader_vae(
     train_paths = tif_paths[:split_idx]
     val_paths = tif_paths[split_idx:]
 
-    if augment:
-        albumentations_transform = get_albumentations_transform()
-
-        class AugAlb:
-            def __call__(self, img):
-                img_np = img.squeeze(0).numpy()
-                aug = albumentations_transform(image=img_np)
-                return torch.from_numpy(aug['image'][None, ...])
-
-        aug_monai = AugAlb()
-    else:
-        aug_monai = lambda x: x
-
-    transforms = Compose([
-        LoadImage(image_only=True),
-        EnsureChannelFirst(),
-        Resize(patch_size),
-        LocalNormalizeByMask(),
-        aug_monai,
-        EnsureType(dtype=torch.float32),
-    ])
+    transforms = Compose(
+        [
+            LoadImage(image_only=True),
+            EnsureChannelFirst(),
+            Resize(patch_size),
+            LocalNormalizeByMask(),
+            EnsureType(dtype=torch.float32),
+        ]
+    )
 
     train_ds = Dataset(data=train_paths, transform=transforms)
     val_ds = Dataset(data=val_paths, transform=transforms)
 
-    train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True
-    )
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     if rank == 0:
         print(f"Image shape {train_ds[0].shape}")
@@ -238,8 +195,8 @@ def KL_loss(z_mu, z_sigma):
 
 
 def normalize_batch_for_display(tensor, low=2, high=98):
-    """
-    Normalise un batch d'images [B, C, H, W] en [0, 1] pour l'affichage TensorBoard.
+    """Normalise un batch d'images [B, C, H, W] en [0, 1] pour l'affichage TensorBoard.
+
     Le fond (valeurs == 0) reste noir, et les faibles valeurs reconstruites (< 1e-3) sont forcées à 0.
     """
     np_img = tensor.detach().cpu().numpy()

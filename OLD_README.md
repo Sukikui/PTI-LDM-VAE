@@ -1,6 +1,5 @@
 VAE_LDM — README
 
-
 DESCRIPTION
 Pipeline pour :
 
@@ -18,7 +17,7 @@ Les images sont des TIF float32 1 canal (256×256). Le LDM est conditionné par 
 
 DOCUMENT DE SYNTHÈSE
 
-Un document de synthèse (Document_de_synthese.pdf) résume la méthodologie, les configurations, les données, ainsi que les résultats d’entraînement et d’inférence 
+Un document de synthèse (Document_de_synthese.pdf) résume la méthodologie, les configurations, les données, ainsi que les résultats d’entraînement et d’inférence
 (métriques, graphiques, UMAP/TSNE) et les recommandations de reproductibilité.
 
 Ne pas hésiter à me contacter en cas de questions : tv.pham1996@gmail.com (Tuong Vy PHAM)
@@ -26,9 +25,9 @@ Ne pas hésiter à me contacter en cas de questions : tv.pham1996@gmail.com (Tuo
 ARBORESCENCE DU DOSSIER
 
 VAE_LDM/
-	config/
-		config_train_16g_cond.json (config entraînement LDM conditionné)
-		environment_tif.json (chemins/env pour TIF)
+config/
+config_train_16g_cond.json (config entraînement LDM conditionné)
+environment_tif.json (chemins/env pour TIF)
 train_autoencoder_tif.py (entraînement VAE)
 train_diffusion_tif_cond.py (entraînement LDM conditionné)
 inference_vae_tif.py (inférence VAE)
@@ -51,7 +50,7 @@ Python recommandé : 3.10
 Créer et activer un environnement virtuel
 python -m venv .venv
 (Linux/macOS) source .venv/bin/activate
-(Windows) .venv\Scripts\activate
+(Windows) .venv\\Scripts\\activate
 
 Installer les dépendances Python
 pip install -r requirements.txt
@@ -74,21 +73,21 @@ Inférence :
 data_cs_1_dm_encastre_tif_04_06_2025_lot_inference_res_150.zip → ex. data/inference/…
 
 Poids VAE édentée/édentée :
-12_06_2025_vae_pour_ldm_edente_edente.zip 
+12_06_2025_vae_pour_ldm_edente_edente.zip
 
 DÉMARRAGE RAPIDE
 
 Entraîner le VAE (édentée → édentée)
 python train_autoencoder_tif.py --config config/environment_tif.json
-Sorties : trained_weights/autoencoder/*.pth, tfevent/, validation_samples/
+Sorties : trained_weights/autoencoder/\*.pth, tfevent/, validation_samples/
 
 Entraîner le LDM conditionné (dentée → édentée)
 python train_diffusion_tif_cond.py --config config/config_train_16g_cond.json --env config/environment_tif.json
 Le script charge le VAE édentée/édentée pour encoder l’input/condition.
 
 Sorties typiques (par epoch) :
-<run_dir>/validation_samples/epoch_<N>/edente/ (GT)
-<run_dir>/validation_samples/epoch_<N>/edente_synth/ (prédictions)
+\<run_dir>/validation_samples/epoch\_<N>/edente/ (GT)
+\<run_dir>/validation_samples/epoch\_<N>/edente_synth/ (prédictions)
 step000.tif, step001.tif, …
 
 Inférence VAE seule
@@ -96,14 +95,14 @@ python inference_vae_tif.py --weights trained_weights/vae/xxx.pth --input data/i
 
 Calcul des métriques
 Le script attend des paires GT/Pred ayant le même nom dans deux dossiers frères :
-…/epoch_<N>/edente/stepNNN.tif (GT)
-…/epoch_<N>/edente_synth/stepNNN.tif (Pred)
+…/epoch\_<N>/edente/stepNNN.tif (GT)
+…/epoch\_<N>/edente_synth/stepNNN.tif (Pred)
 Paramétrage conseillé dans compute_metrics_class_tif.py (section main, à la fin du script) :
-folder_path = "<run_dir>"
+folder_path = "\<run_dir>"
 num_epoch = "<N>"
-folder_path_validation = f"{folder_path}/validation_samples/epoch_{num_epoch}"
+folder_path_validation = f"{folder_path}/validation_samples/epoch\_{num_epoch}"
 Appel recommandé pour éviter les doublons :
-Sorties : _metrics.csv, _dimensions.csv, _metrics_distribution.png dans le dossier visé.
+Sorties : \_metrics.csv, \_dimensions.csv, \_metrics_distribution.png dans le dossier visé.
 
 Visualisation du latent VAE
 UMAP : python umap_latent_vae.py --weights trained_weights/vae/xxx.pth --data data/inference/ --out results/umap/
@@ -139,5 +138,3 @@ torchsummary==1.5.1
 torchvision==0.20.1
 tqdm==4.67.1
 umap==0.1.1
-
-

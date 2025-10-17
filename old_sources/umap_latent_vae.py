@@ -1,17 +1,18 @@
-import os
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-from glob import glob
-from sklearn.decomposition import PCA
-import umap
-from monai.config import print_config
-from monai.transforms import Compose, LoadImage, EnsureChannelFirst, Resize, EnsureType
-from utils_tif_no_augment import LocalNormalizeByMask, define_instance
 import json
+import os
+import random
+from glob import glob
+
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import random
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import umap
+from monai.config import print_config
+from monai.transforms import Compose, EnsureChannelFirst, EnsureType, LoadImage, Resize
+from sklearn.decomposition import PCA
+from utils_tif_no_augment import LocalNormalizeByMask, define_instance
 
 # === SEED POUR REPRODUCTIBILITÉ ===
 seed = 42
@@ -25,11 +26,11 @@ if torch.cuda.is_available():
 couleur_par_examen = True  # True = couleurs par examen, False = bleu/orange
 
 # === CONFIGURATION ===
-vae_weights = "12_06_2025_vae_pour_ldm_edente_edente/trained_weights/autoencoder_epoch73.pth"
-config_file = "config/config_train_16g_cond.json"
-folder_edentee = "data_cs_1_dm_encastre_tif_32_bits_22_05_2025/edente"
-folder_dentee = "data_cs_1_dm_encastre_tif_32_bits_22_05_2025/dente"
-folder_output = "umap_comparatif_edentee_dentee_par_examen"
+vae_weights = "../data/weights/autoencoder_epoch73.pth"
+config_file = "../config/config_train_16g_cond.json"
+folder_edentee = "../data/edente/"
+folder_dentee = "../data/dente/"
+folder_output = "../results/umap_old_script_output"
 save_path = f"{folder_output}/umap_latent_projection_comparatif.png"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 max_images = 1000
@@ -39,7 +40,7 @@ os.makedirs(folder_output, exist_ok=True)
 
 # === Chargement du modèle
 print_config()
-args = type('args', (object,), {})()
+args = type("args", (object,), {})()
 with open(config_file) as f:
     config_dict = json.load(f)
 for k, v in config_dict.items():
@@ -49,20 +50,22 @@ vae.load_state_dict(torch.load(vae_weights, map_location=device))
 vae.eval()
 
 # === Prétraitement
-transforms = Compose([
-    LoadImage(image_only=True),
-    EnsureChannelFirst(),
-    Resize(patch_size),
-    LocalNormalizeByMask(),
-    EnsureType(dtype=torch.float32)
-])
+transforms = Compose(
+    [
+        LoadImage(image_only=True),
+        EnsureChannelFirst(),
+        Resize(patch_size),
+        LocalNormalizeByMask(),
+        EnsureType(dtype=torch.float32),
+    ]
+)
 
 # === Chargement édentées
 paths_edentee = sorted(glob(os.path.join(folder_edentee, "*.tif")))[:max_images]
 exams_edentee = [os.path.basename(p).split("_", 1)[1] for p in paths_edentee]
 unique_exams = sorted(set(exams_edentee))
 exam_to_id = {exam: i for i, exam in enumerate(unique_exams)}
-colormap = cm.get_cmap('tab20', len(unique_exams))
+colormap = cm.get_cmap("tab20", len(unique_exams))
 exam_to_color = {exam: colormap(i) for i, exam in enumerate(unique_exams)}
 
 if couleur_par_examen:
@@ -80,7 +83,7 @@ with torch.no_grad():
         z = vae.encode_stage_2_inputs(img).cpu().flatten(start_dim=1)
         Z_edentee.append(z)
         exam = os.path.basename(path).split("_", 1)[1]
-        color = exam_to_color[exam] if couleur_par_examen else 'tab:blue'
+        color = exam_to_color[exam] if couleur_par_examen else "tab:blue"
         colors_edentee.append(color)
         ids_edentee.append(exam)
 
@@ -96,7 +99,7 @@ with torch.no_grad():
         z = vae.encode_stage_2_inputs(img).cpu().flatten(start_dim=1)
         Z_dentee.append(z)
         exam = os.path.basename(path).split("_", 1)[1]
-        color = exam_to_color.get(exam, "#cccccc") if couleur_par_examen else 'tab:red'
+        color = exam_to_color.get(exam, "#cccccc") if couleur_par_examen else "tab:red"
         colors_dentee.append(color)
         ids_dentee.append(exam)
 
@@ -109,7 +112,7 @@ pca = PCA(n_components=50).fit(Z_edentee)
 Z_edentee_pca = pca.transform(Z_edentee)
 Z_dentee_pca = pca.transform(Z_dentee)
 
-# === UMAP : fit sur édentées, transform sur dentées 
+# === UMAP : fit sur édentées, transform sur dentées
 print("⏳ UMAP projection...")
 umap_model = umap.UMAP(n_components=2, random_state=42, n_neighbors=40, min_dist=0.5).fit(Z_edentee_pca)
 Z_umap_edentee = umap_model.embedding_
@@ -120,13 +123,13 @@ plt.figure(figsize=(10, 8))
 
 for i, (x, y) in enumerate(Z_umap_edentee):
     color = colors_edentee[i]
-    plt.scatter(x, y, s=30, color=color, marker='o', alpha=0.6)
+    plt.scatter(x, y, s=30, color=color, marker="o", alpha=0.6)
 
 # Marqueurs dentées
 for i, (x, y) in enumerate(Z_umap_dentee):
     exam = ids_dentee[i]
     color = colors_dentee[i]
-    plt.scatter(x, y, s=30, color=color, marker='^', alpha=0.6)
+    plt.scatter(x, y, s=30, color=color, marker="^", alpha=0.6)
 
 # === Ajouter un seul label centré par examen, en noir
 for exam in unique_exams:
@@ -136,16 +139,33 @@ for exam in unique_exams:
     ed_pts = [Z_umap_edentee[i] for i in range(len(ids_edentee)) if ids_edentee[i] == exam]
     if ed_pts:
         ed_mean = np.mean(ed_pts, axis=0)
-        plt.text(ed_mean[0], ed_mean[1], f"◯{idx}", fontsize=9, weight='bold',
-                ha='center', va='center', color='black', alpha=0.9)
+        plt.text(
+            ed_mean[0],
+            ed_mean[1],
+            f"◯{idx}",
+            fontsize=9,
+            weight="bold",
+            ha="center",
+            va="center",
+            color="black",
+            alpha=0.9,
+        )
 
     # Moyenne des dentées (triangle '△' car marker='^')
     de_pts = [Z_umap_dentee[i] for i in range(len(ids_dentee)) if ids_dentee[i] == exam]
     if de_pts:
         de_mean = np.mean(de_pts, axis=0)
-        plt.text(de_mean[0], de_mean[1], f"△{idx}", fontsize=9, weight='bold',
-                ha='center', va='center', color='black', alpha=0.9)
-
+        plt.text(
+            de_mean[0],
+            de_mean[1],
+            f"△{idx}",
+            fontsize=9,
+            weight="bold",
+            ha="center",
+            va="center",
+            color="black",
+            alpha=0.9,
+        )
 
 
 # === Titre
@@ -161,8 +181,8 @@ plt.show()
 print(f"✅ Graphe enregistré dans : {save_path}")
 
 
-
 from collections import defaultdict
+
 from scipy.spatial.distance import cdist
 
 # === Regroupement des données par examen
@@ -176,6 +196,7 @@ for i, exam in enumerate(ids_edentee):
 for i, exam in enumerate(ids_dentee):
     exam_data[exam]["dentee"].append(Z_dentee[i])
     exam_data_umap[exam]["dentee"].append(Z_umap_dentee[i])
+
 
 # === Fonction de calcul des métriques
 def compute_metrics(points1, points2):
@@ -192,11 +213,12 @@ def compute_metrics(points1, points2):
     cross_dist_mean = np.mean(all_dists)
     return dist_centres, std1, std2, cross_dist_mean
 
+
 # === Calcul des métriques et sauvegarde
 path_resultats = os.path.join(folder_output, "distances_par_examen_umap.txt")
 with open(path_resultats, "w") as f:
     f.write("Analyse par examen : distances dans l’espace latent et UMAP\n")
-    f.write("="*60 + "\n\n")
+    f.write("=" * 60 + "\n\n")
 
     for exam in sorted(exam_data.keys()):
         lat_ed = exam_data[exam]["edentee"]
@@ -244,7 +266,7 @@ summary.sort(key=lambda x: x[1])
 path_tri = os.path.join(folder_output, "examen_tries_par_distance_latente_umap.txt")
 with open(path_tri, "w") as f:
     f.write("Examens triés par distance centre dentée/édentée (espace latent)\n")
-    f.write("="*60 + "\n\n")
+    f.write("=" * 60 + "\n\n")
     for exam, dist in summary:
         idx = exam_to_id[exam]
         f.write(f"[{idx}] {exam} : {dist:.3f}\n")

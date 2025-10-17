@@ -14,8 +14,7 @@ from monai.utils.type_conversion import convert_to_numpy
 
 
 def normalize_image_to_uint8(image):
-    """
-    Normalize image to uint8
+    """Normalize image to uint8
     Args:
         image: numpy array
     """
@@ -29,8 +28,8 @@ def normalize_image_to_uint8(image):
 
 
 def visualize_2d_image(image):
-    """
-    Prepare a 2D image for visualization.
+    """Prepare a 2D image for visualization.
+
     Args:
         image: image numpy array, sized (H, W)
     """
@@ -42,8 +41,8 @@ def visualize_2d_image(image):
 
 
 def visualize_one_slice_in_3d_image(image, axis: int = 2):
-    """
-    Prepare a 2D image slice from a 3D image for visualization.
+    """Prepare a 2D image slice from a 3D image for visualization.
+
     Args:
         image: image numpy array, sized (H, W, D)
     """

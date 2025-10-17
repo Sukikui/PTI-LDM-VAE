@@ -15,23 +15,19 @@ import logging
 import os
 import sys
 import time
-import tifffile
-
-from tqdm import tqdm
 from pathlib import Path
 
+import tifffile
 import torch
+from monai.config import print_config
 from monai.losses import PatchAdversarialLoss, PerceptualLoss
 from monai.networks.nets import PatchDiscriminator
-from monai.config import print_config
 from monai.utils import set_determinism
 from torch.nn import L1Loss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
-from utils_tif import KL_loss, define_instance, prepare_tif_dataloader_vae, setup_ddp, normalize_batch_for_display
-
-import numpy as np
-from torchvision.utils import make_grid
+from tqdm import tqdm
+from utils_tif import KL_loss, define_instance, normalize_batch_for_display, prepare_tif_dataloader_vae, setup_ddp
 
 
 def main():
@@ -70,8 +66,8 @@ def main():
     torch.set_num_threads(4)
     torch.autograd.set_detect_anomaly(True)
 
-    env_dict = json.load(open(args.environment_file, "r"))["vae"]
-    config_dict = json.load(open(args.config_file, "r"))
+    env_dict = json.load(open(args.environment_file))["vae"]
+    config_dict = json.load(open(args.config_file))
 
     # Définir les arguments
     for k, v in env_dict.items():
@@ -211,16 +207,16 @@ def main():
             best_val_recon_epoch_loss = checkpoint["best_val_loss"]
             total_step = checkpoint["total_step"]
 
-            print(f"[INFO] Reprise à l'epoch {start_epoch} | best_val_loss = {best_val_recon_epoch_loss:.4f} | total_step = {total_step}")
+            print(
+                f"[INFO] Reprise à l'epoch {start_epoch} | best_val_loss = {best_val_recon_epoch_loss:.4f} | total_step = {total_step}"
+            )
         else:
             raise FileNotFoundError(f"[ERREUR] Le checkpoint demandé n'existe pas : {checkpoint_path}")
     else:
-        print(f"[INFO] Entraînement depuis zéro (aucun checkpoint chargé).")
+        print("[INFO] Entraînement depuis zéro (aucun checkpoint chargé).")
         start_epoch = 0
         best_val_recon_epoch_loss = 100.0
         total_step = 0
-
-
 
     # Step 4: training
     autoencoder_warm_up_n_epochs = 5
@@ -273,7 +269,7 @@ def main():
                 total_step += 1
                 tensorboard_writer.add_scalar("train_recon_loss_iter", recons_loss, total_step)
 
-                 # 📸 Affichage périodique d'un triplet (original | recon | diff)
+                # 📸 Affichage périodique d'un triplet (original | recon | diff)
                 if step == 0 and rank == 0:
                     with torch.no_grad():
                         img = images[0].unsqueeze(0).detach().cpu()
@@ -315,31 +311,39 @@ def main():
 
                 with torch.no_grad():
                     reconstruction, z_mu, z_sigma = autoencoder(images)
-                    recons_loss = intensity_loss(reconstruction.float(), images.float()) + \
-                                perceptual_weight * loss_perceptual(reconstruction.float(), images.float())
+                    recons_loss = intensity_loss(
+                        reconstruction.float(), images.float()
+                    ) + perceptual_weight * loss_perceptual(reconstruction.float(), images.float())
 
                 val_recon_epoch_loss += recons_loss.item()
 
                 if rank == 0:
                     # On prend la 1ère image du batch
-                    img = images[0].squeeze().detach().cpu()         # [H, W]
+                    img = images[0].squeeze().detach().cpu()  # [H, W]
                     recon = reconstruction[0].squeeze().detach().cpu()
                     diff = torch.abs(img - recon)
 
                     # Sauvegarde brute en .tif (centrée/réduite), avec rotation
                     if do_save_images:
-                        tifffile.imwrite(dir_original / f"step{step:03}.tif", torch.rot90(img, k=3, dims=[0, 1]).numpy())
+                        tifffile.imwrite(
+                            dir_original / f"step{step:03}.tif", torch.rot90(img, k=3, dims=[0, 1]).numpy()
+                        )
                         tifffile.imwrite(dir_recon / f"step{step:03}.tif", torch.rot90(recon, k=3, dims=[0, 1]).numpy())
                         tifffile.imwrite(dir_diff / f"step{step:03}.tif", torch.rot90(diff, k=3, dims=[0, 1]).numpy())
 
                     # Pour TensorBoard
-                    img_disp = torch.rot90(normalize_batch_for_display(img.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3])[0]
-                    recon_disp = torch.rot90(normalize_batch_for_display(recon.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3])[0]
-                    diff_disp = torch.rot90(normalize_batch_for_display(diff.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3])[0]
+                    img_disp = torch.rot90(
+                        normalize_batch_for_display(img.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3]
+                    )[0]
+                    recon_disp = torch.rot90(
+                        normalize_batch_for_display(recon.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3]
+                    )[0]
+                    diff_disp = torch.rot90(
+                        normalize_batch_for_display(diff.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3]
+                    )[0]
 
                     triplet = torch.cat([img_disp, recon_disp, diff_disp], dim=2)
                     triplets.append((step, triplet))
-
 
             val_recon_epoch_loss = val_recon_epoch_loss / (step + 1)
 
@@ -373,23 +377,40 @@ def main():
 
                     # Sauvegarde des nouveaux meilleurs poids
                     if ddp_bool:
-                        torch.save(autoencoder.module.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
-                        torch.save(discriminator.module.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+                        torch.save(
+                            autoencoder.module.state_dict(),
+                            os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"),
+                        )
+                        torch.save(
+                            discriminator.module.state_dict(),
+                            os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"),
+                        )
                     else:
-                        torch.save(autoencoder.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
-                        torch.save(discriminator.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+                        torch.save(
+                            autoencoder.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth")
+                        )
+                        torch.save(
+                            discriminator.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth")
+                        )
 
                     # Sauvegarde du checkpoint complet
                     checkpoint_path = os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth")
-                    torch.save({
-                        'epoch': epoch,
-                        'autoencoder_state_dict': autoencoder.module.state_dict() if ddp_bool else autoencoder.state_dict(),
-                        'discriminator_state_dict': discriminator.module.state_dict() if ddp_bool else discriminator.state_dict(),
-                        'optimizer_g_state_dict': optimizer_g.state_dict(),
-                        'optimizer_d_state_dict': optimizer_d.state_dict(),
-                        'best_val_loss': best_val_recon_epoch_loss,
-                        'total_step': total_step,
-                    }, checkpoint_path)
+                    torch.save(
+                        {
+                            "epoch": epoch,
+                            "autoencoder_state_dict": autoencoder.module.state_dict()
+                            if ddp_bool
+                            else autoencoder.state_dict(),
+                            "discriminator_state_dict": discriminator.module.state_dict()
+                            if ddp_bool
+                            else discriminator.state_dict(),
+                            "optimizer_g_state_dict": optimizer_g.state_dict(),
+                            "optimizer_d_state_dict": optimizer_d.state_dict(),
+                            "best_val_loss": best_val_recon_epoch_loss,
+                            "total_step": total_step,
+                        },
+                        checkpoint_path,
+                    )
 
                     print(f"✅ Meilleurs modèles enregistrés pour l'epoch {epoch}.")
 
@@ -398,7 +419,6 @@ def main():
             # ✅ Un tag par image, avec epoch en global_step : reste groupé sous "val_triplets"
             for step_idx, triplet in triplets:
                 tensorboard_writer.add_image(f"val_triplets/step{step_idx:03}", triplet, global_step=epoch)
-
 
 
 if __name__ == "__main__":
