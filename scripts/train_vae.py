@@ -26,6 +26,8 @@ from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="VAE Training Script")
+
+    # Config files (original)
     parser.add_argument(
         "-e",
         "--environment-file",
@@ -38,7 +40,60 @@ def parse_args():
         default="./config/config_train_16g_cond.json",
         help="Config json file that stores hyper-parameters",
     )
+
+    # Training options
     parser.add_argument("-g", "--gpus", default=1, type=int, help="Number of GPUs per node")
+
+    # Data options (NEW)
+    parser.add_argument("--data-dir", help="Override data directory from config")
+    parser.add_argument(
+        "--data-source",
+        choices=["edente", "dente", "both"],
+        default="edente",
+        help="Data source: 'edente', 'dente', or 'both' (default: edente)"
+    )
+    parser.add_argument(
+        "--train-split",
+        type=float,
+        default=0.9,
+        help="Train/val split ratio (default: 0.9)"
+    )
+    parser.add_argument(
+        "--val-dir",
+        help="Separate validation directory (overrides split)"
+    )
+    parser.add_argument(
+        "--subset-size",
+        type=int,
+        help="Use only first N images for debugging"
+    )
+
+    # Training hyperparameters (NEW)
+    parser.add_argument("--batch-size", type=int, help="Override batch size from config")
+    parser.add_argument("--max-epochs", type=int, help="Override max epochs from config")
+    parser.add_argument("--lr", type=float, help="Override learning rate")
+    parser.add_argument("--kl-weight", type=float, help="Override KL divergence weight")
+
+    # Performance options (NEW)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader workers (default: 4)"
+    )
+    parser.add_argument(
+        "--cache-rate",
+        type=float,
+        default=0.0,
+        help="Fraction of dataset to cache in RAM, 0.0 to 1.0 (default: 0.0)"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)"
+    )
+
     return parser.parse_args()
 
 
@@ -67,7 +122,7 @@ def setup_environment(args):
 
 
 def load_config(args):
-    """Load and merge configuration files."""
+    """Load and merge configuration files with CLI overrides."""
     env_dict = json.load(open(args.environment_file))["vae"]
     config_dict = json.load(open(args.config_file))
 
@@ -75,6 +130,18 @@ def load_config(args):
         setattr(args, k, v)
     for k, v in config_dict.items():
         setattr(args, k, v)
+
+    # Apply CLI overrides
+    if args.data_dir:
+        args.data_base_dir = args.data_dir
+    if args.batch_size:
+        args.autoencoder_train["batch_size"] = args.batch_size
+    if args.max_epochs:
+        args.autoencoder_train["max_epochs"] = args.max_epochs
+    if args.lr:
+        args.autoencoder_train["lr"] = args.lr
+    if args.kl_weight:
+        args.autoencoder_train["kl_weight"] = args.kl_weight
 
     args.model_dir = os.path.join(args.run_dir, "trained_weights")
     args.tfevent_path = os.path.join(args.run_dir, "tfevent")
@@ -403,16 +470,24 @@ def main() -> None:
         Path(args.model_dir).mkdir(parents=True, exist_ok=True)
         Path(args.tfevent_path).mkdir(parents=True, exist_ok=True)
 
-    set_determinism(42)
+    set_determinism(args.seed)
 
-    # Create dataloaders
+    # Create dataloaders with new parameters
     train_loader, val_loader = create_vae_dataloaders(
         data_base_dir=args.data_base_dir,
         batch_size=args.autoencoder_train["batch_size"],
         patch_size=tuple(args.autoencoder_train["patch_size"]),
         augment=args.augment,
         rank=rank,
-        data_source="edente",
+        data_source=args.data_source,
+        train_split=args.train_split,
+        num_workers=args.num_workers,
+        seed=args.seed,
+        subset_size=args.subset_size,
+        val_dir=args.val_dir,
+        cache_rate=args.cache_rate,
+        distributed=ddp_bool,
+        world_size=world_size,
     )
 
     # Create models

@@ -9,6 +9,17 @@ class VAEModel(nn.Module):
     This is a thin wrapper that simplifies configuration and instantiation
     while exposing all MONAI AutoencoderKL functionality.
 
+    Encoding modes:
+        - encode_stage_2_inputs(): Stochastic sampling (z = z_mu + eps * z_sigma)
+          Use this for training diffusion models (Stage 2).
+
+        - encode_deterministic(): Deterministic encoding using z_mu only
+          Use this for inference, analysis, visualization, and similarity search.
+          This is the standard practice in production as it ensures:
+          * Reproducibility: Same image always produces the same encoding
+          * Batch independence: Result doesn't depend on batch size or other images
+          * Stability: Mean of the distribution is the best point estimate
+
     Args:
         spatial_dims: Number of spatial dimensions (2 for 2D, 3 for 3D)
         in_channels: Number of input channels
@@ -25,8 +36,13 @@ class VAEModel(nn.Module):
     Example:
         >>> config = {"spatial_dims": 2, "in_channels": 1, ...}
         >>> vae = VAEModel.from_config(config)
+        >>>
+        >>> # For training (stochastic)
         >>> reconstruction, z_mu, z_sigma = vae(images)
-        >>> z = vae.encode_stage_2_inputs(images)
+        >>> z_sampled = vae.encode_stage_2_inputs(images)
+        >>>
+        >>> # For inference/analysis (deterministic)
+        >>> z_deterministic = vae.encode_deterministic(images)
     """
 
     def __init__(
@@ -107,6 +123,21 @@ class VAEModel(nn.Module):
             Sampled latent tensor
         """
         return self.autoencoder.encode_stage_2_inputs(x)
+
+    def encode_deterministic(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode inputs deterministically using mean of latent distribution.
+
+        This method returns z_mu (mean) instead of sampling from the distribution,
+        making it suitable for reproducible analysis and visualization.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Latent tensor (mean of distribution, deterministic)
+        """
+        z_mu, _ = self.autoencoder.encode(x)
+        return z_mu
 
     def decode_stage_2_outputs(self, z: torch.Tensor) -> torch.Tensor:
         """Decode outputs from stage 2 (diffusion model inference).

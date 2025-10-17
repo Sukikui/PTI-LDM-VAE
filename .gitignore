@@ -43,5 +43,8 @@ wheels/
 *.ckpt
 *.ptEn
 
+# VAE latents cache
+cache/
+
 # Personal files and directories
 TODO.md

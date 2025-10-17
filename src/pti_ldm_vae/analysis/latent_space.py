@@ -106,6 +106,10 @@ class LatentSpaceAnalyzer:
     ) -> tuple[np.ndarray, list[str]]:
         """Encode images to latent space with batch processing.
 
+        This method uses deterministic encoding (z_mu) instead of stochastic sampling
+        to ensure reproducibility and batch-independence. This is the standard practice
+        for VAE inference, analysis, and visualization in production systems.
+
         Args:
             image_paths: List of image file paths
             max_images: Maximum number of images to encode
@@ -117,6 +121,12 @@ class LatentSpaceAnalyzer:
 
         Raises:
             ValueError: If image_paths is empty
+
+        Note:
+            The encoding is deterministic (uses z_mu, not sampling) to ensure:
+            - Same image always produces same encoding (reproducibility)
+            - Result is independent of batch size (batch-independence)
+            - Consistent caching behavior across different runs
         """
         if len(image_paths) == 0:
             raise ValueError("image_paths cannot be empty")
@@ -149,7 +159,15 @@ class LatentSpaceAnalyzer:
 
                 # Stack and encode batch
                 batch_tensor = torch.stack(batch_imgs).to(self.device)
-                z = self.vae.encode_stage_2_inputs(batch_tensor)
+
+                # Use deterministic encoding (mean of distribution) for reproducible analysis
+                # Instead of sampling from the distribution (encode_stage_2_inputs)
+                if hasattr(self.vae, 'encode_deterministic'):
+                    z = self.vae.encode_deterministic(batch_tensor)
+                else:
+                    # Fallback to stochastic encoding if deterministic method not available
+                    z = self.vae.encode_stage_2_inputs(batch_tensor)
+
                 z = z.cpu().flatten(start_dim=1)
                 latent_vectors.append(z)
 

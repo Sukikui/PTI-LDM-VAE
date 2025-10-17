@@ -137,6 +137,36 @@ def create_transforms(patch_size: tuple[int, int]) -> Compose:
     )
 
 
+def encode_single_image(
+    analyzer: LatentSpaceAnalyzer, image_path: str
+) -> tuple[np.ndarray, str]:
+    """Encode a single image to latent space.
+
+    Args:
+        analyzer: LatentSpaceAnalyzer instance
+        image_path: Path to image file
+
+    Returns:
+        Tuple of (latent_vector, patient_id)
+    """
+    # Use analyzer's encode_images method with single image
+    latent, ids = analyzer.encode_images([image_path])
+    return latent[0], ids[0]
+
+
+def collect_image_paths(folder_path: str, max_images: int) -> list[str]:
+    """Collect image paths from a folder.
+
+    Args:
+        folder_path: Path to image folder
+        max_images: Maximum number of images to collect
+
+    Returns:
+        List of image paths
+    """
+    return load_image_paths(folder_path, max_images)
+
+
 def load_and_encode_group(
     analyzer: LatentSpaceAnalyzer, folder_path: str, max_images: int, group_name: str
 ) -> tuple[np.ndarray, list[str], list[str]]:
@@ -160,6 +190,54 @@ def load_and_encode_group(
     print(f"Encoded {len(latent)} images to latent space")
 
     return latent, ids, paths
+
+
+def load_and_encode_group_with_cache(
+    analyzer: LatentSpaceAnalyzer,
+    folder_path: str,
+    vae_weights: str,
+    max_images: int,
+    patch_size: tuple[int, int],
+    group_name: str,
+    cache_dir: Path = Path("cache/latents"),
+) -> tuple[np.ndarray, list[str], list[str]]:
+    """Load and encode a group of images with intelligent caching.
+
+    This function uses per-image caching to avoid re-encoding images that
+    have already been processed. Cache is organized by VAE model signature.
+
+    Args:
+        analyzer: LatentSpaceAnalyzer instance
+        folder_path: Path to image folder
+        vae_weights: Path to VAE weights file (for cache key)
+        max_images: Maximum number of images to load
+        patch_size: Image patch size (H, W) for cache key
+        group_name: Name of the group (for logging)
+        cache_dir: Root directory for cache (default: cache/latents)
+
+    Returns:
+        Tuple of (latent_vectors, image_ids, image_paths)
+    """
+    from pti_ldm_vae.analysis.latent_cache import LatentCache
+
+    # Collect image paths
+    image_paths = collect_image_paths(folder_path, max_images)
+
+    # Create encoder function for cache system
+    def encoder_fn(img_path: str) -> tuple[np.ndarray, str]:
+        return encode_single_image(analyzer, img_path)
+
+    # Use cache system
+    cache = LatentCache(cache_root=cache_dir)
+    latents, ids, paths = cache.get_or_encode_batch(
+        image_paths=image_paths,
+        encoder_fn=encoder_fn,
+        vae_weights=vae_weights,
+        patch_size=patch_size,
+        group_name=group_name,
+    )
+
+    return latents, ids, paths
 
 
 def save_visualization_and_legend(
