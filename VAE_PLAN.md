@@ -12,12 +12,6 @@ ______________________________________________________________________
 - **`dente`** : Images dentées uniquement (~6000 images)
 - **`both`** : Combinaison edente + dente (~12000 images)
 
-**Architecture** :
-
-- AutoencoderKL avec PatchDiscriminator (adversarial training)
-- Loss : L1 + KL + Perceptual (VGG) + Adversarial
-- Latent space : 4 channels, compression via `channels: [64, 128, 256]`
-
 ______________________________________________________________________
 
 ## Étape 1 : Test rapide (5-10 minutes)
