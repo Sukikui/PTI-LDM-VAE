@@ -1,11 +1,11 @@
 # Data Module
 
-This module handles data loading and preprocessing for TIF images.
+Dataloader utilities for VAE and LDM training.
 
 ## Overview
 
-- **`create_vae_dataloaders`**: Load single images for VAE training
-- **`create_ldm_dataloaders`**: Load paired images for LDM training
+- **`create_vae_dataloaders`**: Single-image dataloaders for VAE training
+- **`create_ldm_dataloaders`**: Paired-image dataloaders for LDM training
 - **Transform classes**: Custom preprocessing (normalization, masking)
 
 ______________________________________________________________________
@@ -33,8 +33,8 @@ train_loader, val_loader = create_vae_dataloaders(
     patch_size=(256, 256),
     data_source="edente",
     train_split=0.85,      # 85/15 split
-    num_workers=8,         # 8 workers
-    seed=42,               # reproducibility
+    num_workers=8,
+    seed=42,
     cache_rate=0.5,        # cache 50% in RAM
     distributed=True,      # for DDP
     world_size=4,
@@ -44,8 +44,6 @@ train_loader, val_loader = create_vae_dataloaders(
 
 ### LDM Dataloaders
 
-Load paired images from target and condition folders:
-
 ```python
 from pti_ldm_vae.data import create_ldm_dataloaders
 
@@ -54,25 +52,9 @@ train_loader, val_loader = create_ldm_dataloaders(
     data_base_dir="/path/to/data",
     batch_size=8,
     patch_size=(256, 256),
-    target="edente",      # target folder
-    condition="dente",    # condition folder
+    target="edente",       # target folder
+    condition="dente",     # condition folder
     rank=0
-)
-
-# With optional parameters
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/path/to/data",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente",
-    train_split=0.85,      # 85/15 split
-    num_workers=8,         # 8 workers
-    seed=42,               # reproducibility
-    cache_rate=0.5,        # cache 50% in RAM
-    distributed=True,      # for DDP
-    world_size=4,
-    rank=rank
 )
 
 # Iterate over batches
@@ -86,8 +68,6 @@ ______________________________________________________________________
 
 ## Data Directory Structure
 
-Your data should be organized as follows:
-
 ```
 data_base_dir/
 ├── edente/
@@ -100,7 +80,7 @@ data_base_dir/
     └── ...
 ```
 
-**Important**: For LDM, the "edente" and "dente" folders must contain the **same number** of images with **matching names**.
+**Important**: For LDM, folders must contain matching filenames.
 
 ______________________________________________________________________
 
@@ -116,42 +96,31 @@ ______________________________________________________________________
 | `augment`       | bool            | False    | Enable data augmentation                   |
 | `rank`          | int             | 0        | Process rank (for multi-GPU training)      |
 
-### VAE-specific Parameters
+### VAE-specific
 
-| Parameter     | Type        | Default  | Description                                           |
-| ------------- | ----------- | -------- | ----------------------------------------------------- |
-| `data_source` | str         | "edente" | Which images to load: "edente", "dente", or "both"    |
-| `val_dir`     | str \| None | None     | Separate validation directory (overrides train_split) |
+| Parameter     | Type     | Default  | Description                                |
+| ------------- | -------- | -------- | ------------------------------------------ |
+| `data_source` | str      | "edente" | Which images: "edente", "dente", or "both" |
+| `val_dir`     | str/None | None     | Separate validation directory              |
 
-### LDM-specific Parameters
+### LDM-specific
 
 | Parameter   | Type | Default  | Description            |
 | ----------- | ---- | -------- | ---------------------- |
 | `target`    | str  | "edente" | Target image folder    |
 | `condition` | str  | "dente"  | Condition image folder |
 
-### Shared Performance Parameters (VAE + LDM)
+### Performance Parameters
 
-| Parameter     | Type        | Default | Description                                              |
-| ------------- | ----------- | ------- | -------------------------------------------------------- |
-| `train_split` | float       | 0.9     | Train/val split ratio (e.g., 0.9 = 90% train, 10% val)   |
-| `num_workers` | int         | 4       | Number of worker processes for data loading              |
-| `seed`        | int \| None | 42      | Random seed for reproducibility (None = no seed)         |
-| `subset_size` | int \| None | None    | Use only first N images/pairs for debugging (None = all) |
-| `cache_rate`  | float       | 0.0     | Fraction of dataset to cache in RAM (0.0 to 1.0)         |
-| `distributed` | bool        | False   | Use DistributedSampler for DDP training                  |
-| `world_size`  | int         | 1       | Number of processes for DDP                              |
-
-### Augmentation
-
-When `augment=True`:
-
-- **VAE**: Applies augmentation (images already resized to `patch_size`)
-- **LDM**: Applies augmentation to both images (images already resized to `patch_size`)
-
-**Note**: Images are ALWAYS resized to `patch_size` regardless of augmentation setting.
-
-Augmentations are defined in `augmentation.py` using albumentations library.
+| Parameter     | Type     | Default | Description                                   |
+| ------------- | -------- | ------- | --------------------------------------------- |
+| `train_split` | float    | 0.9     | Train/val split ratio                         |
+| `num_workers` | int      | 4       | Number of worker processes                    |
+| `seed`        | int      | 42      | Random seed for reproducibility               |
+| `subset_size` | int/None | None    | Use only first N images for debugging         |
+| `cache_rate`  | float    | 0.0     | Fraction of dataset to cache in RAM (0.0-1.0) |
+| `distributed` | bool     | False   | Use DistributedSampler for DDP                |
+| `world_size`  | int      | 1       | Number of processes for DDP                   |
 
 ______________________________________________________________________
 
@@ -161,7 +130,7 @@ All images go through these transforms:
 
 1. **Load**: Load TIF images
 2. **Channel**: Ensure channel-first format [C, H, W]
-3. **Resize**: Resize to `patch_size` (if augmentation enabled)
+3. **Resize**: Resize to `patch_size`
 4. **Normalize**: Local normalization by mask (excludes background)
 5. **Augmentation**: Apply augmentations (if enabled)
 6. **Type**: Convert to float32 tensor
@@ -180,18 +149,18 @@ ______________________________________________________________________
 
 ## Data Split
 
-### Standard Split (VAE + LDM)
+### Standard Split
 
-By default, data is split into train/val sets with configurable ratio:
+By default, data is split with configurable ratio:
 
-- **Train**: 90% of data (configurable via `train_split` parameter)
-- **Val**: 10% of data
+- **Train**: 90% (configurable via `train_split`)
+- **Val**: 10%
 
-The split is **shuffled with seed** for reproducibility.
+The split is shuffled with seed for reproducibility.
 
 ### External Validation (VAE only)
 
-For VAE, you can provide a separate validation directory via `val_dir` parameter:
+Provide a separate validation directory:
 
 ```python
 train_loader, val_loader = create_vae_dataloaders(
@@ -203,13 +172,9 @@ train_loader, val_loader = create_vae_dataloaders(
 
 When `val_dir` is provided, ALL images from `data_base_dir` are used for training.
 
-Note: LDM does not support external validation directory yet.
-
 ______________________________________________________________________
 
 ## Custom Transforms
-
-If you need to use the transforms directly:
 
 ```python
 from pti_ldm_vae.data import LocalNormalizeByMask, ApplyLocalNormd, ToTuple
@@ -232,25 +197,15 @@ ______________________________________________________________________
 
 ## Examples
 
-### Example 1: VAE Training (different data sources)
+### VAE Training with Different Data Sources
 
 ```python
-from pti_ldm_vae.data import create_vae_dataloaders
-
 # Train on edente images only
 train_loader, val_loader = create_vae_dataloaders(
     data_base_dir="/data/my_project",
     batch_size=16,
     patch_size=(512, 512),
     data_source="edente"
-)
-
-# Train on dente images only
-train_loader, val_loader = create_vae_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=16,
-    patch_size=(512, 512),
-    data_source="dente"
 )
 
 # Train on both edente + dente mixed together
@@ -262,11 +217,9 @@ train_loader, val_loader = create_vae_dataloaders(
 )
 ```
 
-### Example 2: LDM Training (Basic)
+### LDM Training
 
 ```python
-from pti_ldm_vae.data import create_ldm_dataloaders
-
 # Train edente→dente (default)
 train_loader, val_loader = create_ldm_dataloaders(
     data_base_dir="/data/my_project",
@@ -275,36 +228,20 @@ train_loader, val_loader = create_ldm_dataloaders(
     target="edente",
     condition="dente"
 )
-
-# Train dente→edente (reverse)
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="dente",
-    condition="edente"
-)
-
-# First batch
-target_imgs, condition_imgs = next(iter(train_loader))
-print(f"Target shape: {target_imgs.shape}")
-print(f"Condition shape: {condition_imgs.shape}")
 ```
 
-### Example 3: DDP Multi-GPU Training (VAE + LDM)
+### Multi-GPU Training (DDP)
 
 ```python
-from pti_ldm_vae.data import create_vae_dataloaders, create_ldm_dataloaders
-
 # VAE with DDP
 train_loader, val_loader = create_vae_dataloaders(
     data_base_dir="/data/my_project",
     batch_size=8,
     patch_size=(256, 256),
     rank=rank,
-    distributed=True,  # Enable DistributedSampler
-    world_size=world_size,  # Number of GPUs
-    seed=42  # For reproducibility
+    distributed=True,
+    world_size=world_size,
+    seed=42
 )
 
 # LDM with DDP
@@ -321,94 +258,29 @@ train_loader, val_loader = create_ldm_dataloaders(
 )
 ```
 
-### Example 4: Debug Mode (VAE + LDM)
+### Debug Mode
 
 ```python
-from pti_ldm_vae.data import create_vae_dataloaders, create_ldm_dataloaders
-
-# VAE: Use only 50 images for quick debugging
+# Use only 50 images for quick debugging
 train_loader, val_loader = create_vae_dataloaders(
     data_base_dir="/data/my_project",
     batch_size=4,
     patch_size=(256, 256),
-    subset_size=50,  # Only first 50 images
+    subset_size=50,
     data_source="edente"
-)
-
-# LDM: Use only 50 pairs for quick debugging
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=4,
-    patch_size=(256, 256),
-    subset_size=50,  # Only first 50 pairs
-    target="edente",
-    condition="dente"
 )
 ```
 
-### Example 5: Performance Optimization with Caching (VAE + LDM)
+### Performance Optimization with Caching
 
 ```python
-from pti_ldm_vae.data import create_vae_dataloaders, create_ldm_dataloaders
-
-# VAE: Cache 50% of training data in RAM for faster loading
+# Cache 50% of training data in RAM
 train_loader, val_loader = create_vae_dataloaders(
     data_base_dir="/data/my_project",
     batch_size=8,
     patch_size=(256, 256),
-    cache_rate=0.5,  # Cache 50% of training data
-    num_workers=8  # Use 8 workers for data loading
-)
-
-# LDM: Same caching support
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente",
     cache_rate=0.5,
     num_workers=8
-)
-```
-
-### Example 6: External Validation Set
-
-```python
-from pti_ldm_vae.data import create_vae_dataloaders
-
-# Use separate directory for validation
-train_loader, val_loader = create_vae_dataloaders(
-    data_base_dir="/data/train",
-    val_dir="/data/validation",  # External validation
-    batch_size=8,
-    patch_size=(256, 256),
-    data_source="edente"
-)
-```
-
-### Example 7: Custom Split Ratio (VAE + LDM)
-
-```python
-from pti_ldm_vae.data import create_vae_dataloaders, create_ldm_dataloaders
-
-# VAE: Use 85/15 train/val split
-train_loader, val_loader = create_vae_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=8,
-    patch_size=(256, 256),
-    train_split=0.85,  # 85% train, 15% val
-    data_source="edente"
-)
-
-# LDM: Same configurable split
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente",
-    train_split=0.85  # 85% train, 15% val
 )
 ```
 
@@ -420,23 +292,11 @@ ______________________________________________________________________
 
 The `num_workers` parameter controls parallel data loading:
 
-- **Too few workers**: GPU waits for data (bottleneck)
-- **Too many workers**: High RAM usage, diminishing returns
+- **Too few**: GPU waits for data (bottleneck)
+- **Too many**: High RAM usage, diminishing returns
 - **Recommended**: `min(4 * num_gpus, num_cpu_cores)`
 
-Example:
-
-```python
-# For 2 GPUs and 16 CPU cores
-train_loader, val_loader = create_vae_dataloaders(
-    # ...
-    num_workers=8  # 4 * 2 GPUs
-)
-```
-
 ### Caching for Speed
-
-Use `cache_rate` to cache dataset in RAM:
 
 - **0.0** (default): No caching, load from disk each time
 - **0.5**: Cache 50% of training data (good balance)
@@ -449,10 +309,6 @@ Validation data is ALWAYS cached at 100% when caching is enabled.
 When training with multiple GPUs, enable `distributed=True`:
 
 ```python
-# Without DistributedSampler (BAD)
-# All GPUs see the same data → no real parallelism
-
-# With DistributedSampler (GOOD)
 train_loader, val_loader = create_vae_dataloaders(
     # ...
     distributed=True,
@@ -462,9 +318,11 @@ train_loader, val_loader = create_vae_dataloaders(
 # Each GPU sees different data → true parallelism
 ```
 
+______________________________________________________________________
+
 ## Dataset Statistics
 
-When loading data, detailed statistics are printed automatically (rank 0 only):
+When loading data, detailed statistics are printed (rank 0 only):
 
 ```
 ============================================================
@@ -484,130 +342,6 @@ Image properties:
   Std: 0.987
 ============================================================
 ```
-
-## Configuration pour cluster
-
-### Paramètres clés
-
-| Paramètre     | Quoi ?                                 | Recommandation                          |
-| ------------- | -------------------------------------- | --------------------------------------- |
-| `num_workers` | Processus CPU pour charger les données | `4 * nb_GPUs` ou `nb_CPU_cores`         |
-| `world_size`  | Nombre de GPUs pour DDP                | Nombre de GPUs disponibles (1, 2, 4, 8) |
-| `rank`        | ID du GPU actuel (0 à world_size - 1)  | Automatique avec torchrun               |
-| `cache_rate`  | Fraction du dataset en RAM (0.0 à 1.0) | 0.5 à 1.0 si >64GB RAM                  |
-| `distributed` | Active DistributedSampler pour DDP     | `True` si world_size > 1                |
-
-### Différence `num_workers` vs `world_size`
-
-- **`num_workers`** : Processus **CPU** qui chargent les données en parallèle (évite que GPU attende)
-- **`world_size`** : Nombre de **GPUs** qui entraînent en parallèle (accélère l'entraînement)
-
-**Exemple :** Machine avec 4 GPUs et 16 CPU cores
-
-- `world_size=4` → 4 GPUs entraînent en parallèle
-- `num_workers=8` → Chaque GPU a 8 workers CPU → **32 workers CPU au total**
-
-### Configuration optimale selon votre machine
-
-#### Machine locale (1 GPU, 8 cores, 16GB RAM)
-
-```python
-train_loader, val_loader = create_vae_dataloaders(
-    data_base_dir="/data",
-    batch_size=4,
-    patch_size=(256, 256),
-    num_workers=4,       # 4 workers CPU
-    cache_rate=0.0,      # Pas assez de RAM
-    distributed=False,   # 1 seul GPU
-    rank=0
-)
-```
-
-#### Serveur moyen (4 GPUs, 32 cores, 128GB RAM)
-
-```python
-# VAE
-train_loader, val_loader = create_vae_dataloaders(
-    data_base_dir="/data",
-    batch_size=8,
-    patch_size=(256, 256),
-    num_workers=8,       # 8 workers par GPU
-    cache_rate=0.5,      # Cache 50% en RAM
-    distributed=True,    # Multi-GPU
-    world_size=4,        # 4 GPUs
-    rank=rank            # Auto avec torchrun
-)
-
-# LDM (mêmes paramètres)
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente",
-    num_workers=8,
-    cache_rate=0.5,
-    distributed=True,
-    world_size=4,
-    rank=rank
-)
-
-# Lancer avec torchrun :
-# torchrun --nproc_per_node=4 scripts/train_vae.py -e config/env.json -c config/config.json
-```
-
-#### Cluster HPC (8 GPUs, 128 cores, 512GB RAM)
-
-```python
-# VAE
-train_loader, val_loader = create_vae_dataloaders(
-    data_base_dir="/data",
-    batch_size=16,
-    patch_size=(256, 256),
-    num_workers=16,      # 16 workers par GPU
-    cache_rate=1.0,      # Cache tout en RAM
-    distributed=True,    # Multi-GPU
-    world_size=8,        # 8 GPUs
-    rank=rank            # Auto avec torchrun
-)
-
-# LDM (mêmes paramètres)
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data",
-    batch_size=16,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente",
-    num_workers=16,
-    cache_rate=1.0,
-    distributed=True,
-    world_size=8,
-    rank=rank
-)
-
-# Lancer avec torchrun :
-# torchrun --nproc_per_node=8 scripts/train_vae.py -e config/env.json -c config/config.json
-```
-
-### Recommandations générales
-
-**RAM disponible :**
-
-- < 32GB : `cache_rate=0.0` (pas de cache)
-- 32-128GB : `cache_rate=0.3-0.5` (cache partiel)
-- > 128GB : `cache_rate=0.8-1.0` (cache total)
-
-**CPU cores :**
-
-- `num_workers = min(4 * nb_GPUs, nb_CPU_cores // 2)`
-- Laissez quelques cores libres pour le système
-
-**Batch size :**
-
-- Plus de GPUs → Augmenter batch_size proportionnellement
-- 1 GPU : batch_size = 4-8
-- 4 GPUs : batch_size = 8-16
-- 8 GPUs : batch_size = 16-32
 
 ______________________________________________________________________
 
