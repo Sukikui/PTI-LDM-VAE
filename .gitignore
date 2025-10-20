@@ -42,9 +42,16 @@ wheels/
 *.pth
 *.ckpt
 *.ptEn
+runs/
 
 # VAE latents cache
 cache/
 
 # Personal files and directories
 TODO.md
+
+# Environment variables (contains API keys and secrets)
+.env
+
+# W&B local files
+wandb/

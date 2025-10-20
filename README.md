@@ -1,382 +1,385 @@
 # PTI-LDM-VAE
 
-Pipeline complete d'entraînement et d'inférence pour la génération d'images médicales TIF à l'aide d'un Variational Autoencoder (VAE) couplé à un Latent Diffusion Model (LDM) conditionné.
+Two-stage pipeline for medical image generation using Variational Autoencoders (VAE) and Latent Diffusion Models (LDM).
 
-## Description
+## Overview
 
-Ce projet implémente un pipeline en deux étapes pour la génération d'images médicales :
+This project implements a two-stage generative pipeline for medical TIF images:
 
-1. **VAE (Variational Autoencoder)** : Entraînement d'un auto-encodeur variationnel sur des images TIF float32 (édentée → édentée) pour apprendre une représentation latente compacte
-2. **LDM (Latent Diffusion Model)** : Entraînement d'un modèle de diffusion conditionné (dentée → édentée) qui opère dans l'espace latent du VAE
+1. **Stage 1 - VAE**: Learn a compact latent representation of edentulous images
+2. **Stage 2 - LDM**: Conditional diffusion model for dental→edentulous image translation
 
-Les images sont des fichiers TIF float32 mono-canal (256×256). Le LDM est conditionné par l'image dentée encodée par le VAE et génère une image édentée correspondante.
+Both models operate on float32 single-channel TIF images (256×256).
 
-**Auteur original** : Tuong Vy PHAM (tv.pham1996@gmail.com)
+**Original Author**: Tuong Vy PHAM (tv.pham1996@gmail.com)
 
-## Fonctionnalités
+______________________________________________________________________
 
-- Entraînement VAE avec discriminateur adversarial (PatchGAN)
-- Entraînement LDM conditionné avec cross-attention
-- Inférence VAE et LDM
-- Calcul de métriques (PSNR, SSIM, Dice, IoU, métriques géométriques)
-- Visualisation de l'espace latent (UMAP, t-SNE)
-- Support multi-GPU avec Distributed Data Parallel (DDP)
-- Suivi d'entraînement avec TensorBoard
-- Sauvegarde automatique des meilleurs checkpoints
+## Features
 
-## Structure du projet
+- **VAE with adversarial training** (PatchGAN discriminator)
+- **Conditional LDM** with cross-attention
+- **Multi-GPU training** with Distributed Data Parallel (DDP)
+- **Latent space visualization** (UMAP, t-SNE)
+- **Comprehensive metrics** (PSNR, SSIM, Dice, IoU)
+- **TensorBoard monitoring**
+- **Automatic checkpoint management**
 
-```
-PTI-LDM-VAE/
-├── train_autoencoder_tif.py          # Entraînement du VAE
-├── train_diffusion_tif_cond.py       # Entraînement du LDM conditionné
-├── inference_vae_tif.py              # Inférence VAE
-├── compute_metrics_class_tif.py      # Calcul des métriques de qualité
-├── umap_latent_vae.py                # Visualisation UMAP de l'espace latent
-├── tsne_latent_vae.py                # Visualisation t-SNE de l'espace latent
-├── visualize_image.py                # Utilitaires de visualisation
-├── utils_tif.py                      # Dataset, augmentations et I/O TIF
-├── utils_tif_no_augment.py           # Variante sans augmentations
-├── requirements.txt                  # Dépendances pip
-├── environment.yml                   # Environnement conda
-└── config/                           # Fichiers de configuration (non inclus)
-    ├── config_train_16g_cond.json    # Config LDM
-    └── environment_tif.json          # Chemins et paramètres
-```
+______________________________________________________________________
 
-## Installation
+## Quick Start
 
-### Prérequis
-
-- Python 3.10
-- CUDA compatible GPU (recommandé)
-- Conda ou venv
-
-### Installation avec Conda (recommandé)
+### Installation
 
 ```bash
-# Créer l'environnement conda
+# Clone the repository
+git clone <repository-url>
+cd PTI-LDM-VAE
+
+# Create conda environment
 conda env create -f environment.yml
-
-# Activer l'environnement
 conda activate pti-ldm-vae
-```
 
-### Installation avec pip
-
-```bash
-# Créer un environnement virtuel
-python -m venv .venv
-
-# Activer l'environnement
-# Linux/macOS
-source .venv/bin/activate
-# Windows
-.venv\Scripts\activate
-
-# Installer les dépendances
+# Or use pip
 pip install -r requirements.txt
 ```
 
-### Installation de PyTorch
-
-Installer PyTorch selon votre configuration (OS, CUDA) :
+### Train a VAE
 
 ```bash
-# Exemple pour CUDA 11.8
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+python scripts/train_vae.py -c config/vae_config.json
 ```
 
-Voir les instructions officielles : https://pytorch.org/get-started/locally/
+### Train an LDM (requires trained VAE)
+
+```bash
+python scripts/train_ldm.py \
+  -e config/environment_tif.json \
+  -c config/config_train_16g_cond.json \
+  -g 1
+```
+
+### Run Inference
+
+```bash
+# VAE reconstruction
+python scripts/inference_vae.py \
+  --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
+  --input-dir data/edente/ \
+  --num-samples 20
+
+# LDM generation
+python scripts/inference_ldm.py \
+  --checkpoint runs/ldm_experiment/trained_weights/checkpoint_epoch50.pth \
+  --num-samples 10
+```
+
+______________________________________________________________________
+
+## Project Structure
+
+```
+PTI-LDM-VAE/
+├── scripts/                    # Training, inference, analysis scripts
+│   ├── train_vae.py           # VAE training
+│   ├── train_ldm.py           # LDM training
+│   ├── inference_vae.py       # VAE inference
+│   ├── inference_ldm.py       # LDM inference
+│   ├── analyze_static.py      # Latent space visualization (static)
+│   └── analyze_interactive.py # Latent space visualization (interactive)
+├── src/pti_ldm_vae/           # Source code
+│   ├── models/                # VAE and LDM models
+│   ├── data/                  # Dataloaders and transforms
+│   ├── utils/                 # Utilities (distributed, visualization)
+│   └── analysis/              # Analysis tools
+├── config/                    # Configuration files
+│   ├── vae_config.json       # VAE unified config
+│   ├── environment_tif.json  # LDM environment config
+│   └── config_train_16g_cond.json  # LDM model config
+└── runs/                      # Training outputs (auto-generated)
+```
+
+______________________________________________________________________
+
+## Data Organization
+
+```
+data/
+├── edente/              # Edentulous images (VAE training)
+│   ├── image_001.tif
+│   ├── image_002.tif
+│   └── ...
+└── dente/               # Dental images (LDM conditioning)
+    ├── image_001.tif
+    ├── image_002.tif
+    └── ...
+```
+
+**Requirements:**
+
+- TIF format, float32, single channel
+- 256×256 pixels
+- For LDM: matching filenames between `edente/` and `dente/` folders
+
+______________________________________________________________________
 
 ## Configuration
 
-Le projet utilise des fichiers JSON pour la configuration :
+### VAE Training
 
-- `config/environment_tif.json` : Chemins des datasets, poids, options d'I/O
-- `config/config_train_16g_cond.json` : Hyperparamètres du LDM (architecture, learning rate, epochs, etc.)
-
-**Note** : Les fichiers de configuration ne sont pas inclus dans ce dépôt. Créez-les selon vos besoins ou contactez l'auteur.
-
-## Utilisation
-
-### 1. Entraînement du VAE
-
-Entraîne un auto-encodeur variationnel sur des images édentées :
+Uses a single unified configuration file (`config/vae_config.json`):
 
 ```bash
-python train_autoencoder_tif.py \
-    --environment-file ./config/environment_tif.json \
-    --config-file ./config/config_train_16g_cond.json \
-    --gpus 1
+# Basic training
+python scripts/train_vae.py -c config/vae_config.json
+
+# With overrides
+python scripts/train_vae.py \
+  -c config/vae_config.json \
+  --batch-size 16 \
+  --lr 5e-5 \
+  --max-epochs 50
+
+# Multi-GPU
+torchrun --nproc_per_node=4 scripts/train_vae.py \
+  -c config/vae_config.json \
+  -g 4
 ```
 
-**Sorties** :
+See `config/README.md` for detailed configuration guide.
 
-- `trained_weights/autoencoder/` : Poids du modèle (`.pth`)
-- `tfevent/` : Logs TensorBoard
-- `validation_samples/` : Échantillons de validation
+### LDM Training
 
-**Options** :
+Uses two configuration files:
 
-- `--gpus N` : Nombre de GPUs (active DDP si > 1)
-
-### 2. Entraînement du LDM conditionné
-
-Entraîne le modèle de diffusion conditionné (nécessite un VAE pré-entraîné) :
+- `environment_tif.json` - Paths and VAE checkpoint
+- `config_train_16g_cond.json` - Model architecture and hyperparameters
 
 ```bash
-python train_diffusion_tif_cond.py \
-    --environment-file ./config/environment_tif.json \
-    --config-file ./config/config_train_16g_cond.json \
-    --gpus 1
+python scripts/train_ldm.py \
+  -e config/environment_tif.json \
+  -c config/config_train_16g_cond.json \
+  -g 1
 ```
 
-Le script charge automatiquement le VAE pré-entraîné spécifié dans `environment_tif.json`.
+______________________________________________________________________
 
-**Sorties par epoch** :
+## Documentation
 
-- `validation_samples/epoch_N/edente/` : Ground truth
-- `validation_samples/epoch_N/edente_synth/` : Images générées
-- `trained_weights/diffusion_unet_epochN.pth` : Meilleurs poids
-- `trained_weights/checkpoint_epochN.pth` : Checkpoint complet
+- **`scripts/README.md`** - Detailed guide for all scripts
+- **`config/README.md`** - Configuration system documentation
+- **`MIGRATION_GUIDE.md`** - Migration from old configuration system
+- **`src/pti_ldm_vae/data/README.md`** - Dataloader API reference
+- **`src/pti_ldm_vae/models/README.md`** - Model architecture details
 
-### 3. Inférence VAE
-
-Lance l'inférence sur de nouvelles images :
-
-```bash
-python inference_vae_tif.py
-```
-
-**À configurer dans le script** (lignes 30-42) :
-
-- `weights_path` : Chemin vers le checkpoint du VAE
-- `input_dir` : Dossier contenant les images TIF d'entrée
-- `description` : Description pour le nom du dossier de sortie
-
-**Sorties** :
-
-- `inference_<nom>_<epoch>_<description>/résultats_tif/` : Résultats en TIF
-- `inference_<nom>_<epoch>_<description>/résultats_png/` : Visualisations PNG
-
-### 4. Calcul des métriques
-
-Calcule les métriques de qualité entre images GT et prédites :
-
-```bash
-python compute_metrics_class_tif.py
-```
-
-**Structure attendue des dossiers** :
-
-```
-<run_dir>/validation_samples/epoch_N/
-├── edente/              # Ground truth
-│   ├── step000.tif
-│   └── step001.tif
-└── edente_synth/        # Prédictions
-    ├── step000.tif
-    └── step001.tif
-```
-
-**À configurer dans le script** (section `main`) :
-
-- `folder_path` : Chemin vers le dossier d'exécution
-- `num_epoch` : Numéro d'epoch à analyser
-
-**Métriques calculées** :
-
-- PSNR (Peak Signal-to-Noise Ratio)
-- SSIM (Structural Similarity Index)
-- Dice coefficient
-- IoU (Intersection over Union)
-- Métriques géométriques (dimensions, excentricité, etc.)
-
-**Sorties** :
-
-- `*_metrics.csv` : Métriques par image
-- `*_dimensions.csv` : Dimensions des objets
-- `*_metrics_distribution.png` : Distributions des métriques
-
-### 5. Visualisation de l'espace latent
-
-#### UMAP
-
-```bash
-python umap_latent_vae.py
-```
-
-**À configurer dans le script** :
-
-- `vae_weights` : Chemin vers les poids du VAE
-- `folder_edentee` / `folder_dentee` : Dossiers d'images
-- `max_images` : Nombre maximum d'images à encoder
-
-#### t-SNE
-
-```bash
-python tsne_latent_vae.py
-```
-
-Configuration similaire à UMAP.
-
-**Sorties** :
-
-- Visualisation 2D de l'espace latent
-- Fichier de légende des couleurs (si mode par examen activé)
-
-## Monitoring avec TensorBoard
-
-Visualiser l'entraînement en temps réel :
-
-```bash
-tensorboard --logdir=<run_dir>/tfevent
-```
-
-**Visualisations disponibles** :
-
-- Courbes de loss (train/validation)
-- Triplets d'images (original, reconstruction, différence)
-- Grilles de validation avec bruitages intermédiaires
-- Comparaisons condition/GT/génération
-
-## Reprise d'entraînement
-
-Les deux scripts d'entraînement supportent la reprise depuis un checkpoint :
-
-```python
-# Dans le fichier de config JSON
-{
-    "resume_ckpt": true,
-    "checkpoint_dir": "path/to/checkpoint_epochN.pth",
-    "start_epoch": N  # Pour le LDM uniquement
-}
-```
-
-Le checkpoint contient :
-
-- États des modèles (autoencoder, discriminator/unet)
-- États des optimiseurs
-- Meilleure validation loss
-- Numéro d'epoch actuel
-- Compteur de steps global
+______________________________________________________________________
 
 ## Architecture
 
 ### VAE (Variational Autoencoder)
 
-- Architecture : AutoencoderKL (MONAI)
-- Loss : L1/L2 + KL divergence + Perceptual (VGG) + Adversarial
-- Discriminateur : PatchDiscriminator 3 couches
-- Warm-up : 5 epochs sans adversarial loss
-- Latent dim : 4 canaux
+- **Base**: MONAI AutoencoderKL
+- **Loss**: L1/L2 + KL divergence + Perceptual (VGG) + Adversarial
+- **Discriminator**: PatchDiscriminator (3 layers)
+- **Latent dim**: 4 channels
+- **Training**: 5-epoch warm-up without adversarial loss
 
 ### LDM (Latent Diffusion Model)
 
-- Architecture : UNet avec cross-attention
-- Scheduler : DDPM (Denoising Diffusion Probabilistic Model)
-- Conditioning : Projection linéaire du latent dentée vers cross_attention_dim
-- Mixed precision training (AMP)
-- Scale factor : Calculé automatiquement depuis le VAE
+- **Base**: UNet with cross-attention
+- **Scheduler**: DDPM (1000 timesteps)
+- **Conditioning**: Linear projection from dental latent to cross-attention dim
+- **Training**: Mixed precision (AMP)
+- **Scale factor**: Auto-computed from VAE
 
-## Dépendances principales
+______________________________________________________________________
 
-- PyTorch 2.5.1
+## Monitoring
+
+All training scripts log to TensorBoard:
+
+```bash
+tensorboard --logdir runs/
+```
+
+Open http://localhost:6006 to view:
+
+- Loss curves (train/validation)
+- Image triplets (original | reconstruction | difference)
+- Generated samples during training
+
+______________________________________________________________________
+
+## Examples
+
+### Complete Workflow
+
+```bash
+# 1. Train VAE
+python scripts/train_vae.py -c config/vae_config.json
+
+# 2. Test VAE
+python scripts/inference_vae.py \
+  --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
+  --input-dir data/edente/ \
+  --num-samples 10
+
+# 3. Visualize latent space
+python scripts/analyze_static.py \
+  --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
+  --config-file config/vae_config.json \
+  --folder-edente data/edente/ \
+  --output-dir results/latent_viz \
+  --method umap
+
+# 4. Train LDM (update environment_tif.json with VAE path first)
+python scripts/train_ldm.py \
+  -e config/environment_tif.json \
+  -c config/config_train_16g_cond.json \
+  -g 1
+
+# 5. Generate images
+python scripts/inference_ldm.py \
+  --checkpoint runs/ldm_experiment/trained_weights/checkpoint_epoch50.pth \
+  --num-samples 20
+```
+
+### Multi-GPU Training
+
+```bash
+# VAE with 4 GPUs
+torchrun --nproc_per_node=4 scripts/train_vae.py \
+  -c config/vae_config.json \
+  -g 4
+
+# LDM with 4 GPUs
+torchrun --nproc_per_node=4 scripts/train_ldm.py \
+  -e config/environment_tif.json \
+  -c config/config_train_16g_cond.json \
+  -g 4
+```
+
+______________________________________________________________________
+
+## Key Dependencies
+
+- Python 3.10+
+- PyTorch 2.5.1+
 - MONAI 1.5.1
-- TensorFlow 2.20.0 (backend pour certaines métriques)
-- albumentations 2.0.8 (augmentations)
-- scikit-learn 1.7.2
-- UMAP 0.1.1
-- tifffile 2024.9.20
-- TensorBoard 2.18.0
+- CUDA-compatible GPU (recommended)
 
-Voir `requirements.txt` ou `environment.yml` pour la liste complète.
+See `requirements.txt` or `environment.yml` for complete list.
 
-## Données
+______________________________________________________________________
 
-### Format
+## Performance Tips
 
-- Type : TIF float32
-- Canaux : 1 (niveaux de gris)
-- Résolution : 256×256 pixels
-- Normalisation : Centrée-réduite par masque (pixels non-nuls)
+### GPU Memory
 
-### Organisation
+- Reduce `batch_size` if OOM errors occur
+- Reduce `patch_size` (e.g., 256→128)
+- Enable gradient checkpointing (if available)
 
+### Training Speed
+
+- Use `--cache-rate 1.0` to cache dataset in RAM
+- Increase `--num-workers` (e.g., 8-16)
+- Use multiple GPUs with DDP
+
+### Hyperparameters
+
+- **KL weight** (`kl_weight`): Controls latent space regularization
+  - Too high → poor reconstruction
+  - Too low → unstructured latent
+  - Recommended: 1e-6 to 1e-5
+- **Perceptual weight** (`perceptual_weight`): Improves texture quality
+  - Recommended: 1.0
+- **Learning rate** (`lr`): Auto-scaled by world_size in DDP
+  - Single GPU: 2.5e-5
+  - 4 GPUs: Effective LR = 2.5e-5 × 4
+
+______________________________________________________________________
+
+## Resuming Training
+
+Both VAE and LDM support checkpoint resuming:
+
+```json
+{
+  "resume_ckpt": true,
+  "checkpoint_dir": "path/to/checkpoint_epoch73.pth"
+}
 ```
-data/
-├── train/
-│   ├── edente/      # Images édentées (VAE)
-│   └── dente/       # Images dentées (LDM condition)
-└── inference/
-    ├── edente/
-    └── dente/
-```
 
-## Conseils d'utilisation
+Checkpoints include:
 
-### Performance
+- Model states (autoencoder, discriminator/unet)
+- Optimizer states
+- Best validation loss
+- Current epoch
+- Global step counter
 
-- Utilisez DDP (`--gpus > 1`) pour l'entraînement multi-GPU
-- Le cache des datasets peut être ajusté (`cache=1.0` pour tout en RAM)
-- AMP activé par défaut pour le LDM (gain mémoire/vitesse)
+______________________________________________________________________
 
-### Hyperparamètres clés
+## Troubleshooting
 
-- `kl_weight` : Poids de la KL divergence (crucial pour la qualité du latent)
-  - Trop élevé → mauvaise reconstruction
-  - Trop faible → latent non régularisé
-- `perceptual_weight` : Poids de la perceptual loss
-- `lr` : Learning rate (multiplié par world_size en DDP)
+### CUDA Out of Memory
 
-### Sauvegarde
+- Reduce `batch_size`
+- Reduce `patch_size`
+- Enable gradient checkpointing
 
-- Seuls les **meilleurs** checkpoints sont conservés (validation loss minimale)
-- Les anciens checkpoints sont automatiquement supprimés
-- Les poids `*_last.pth` sont toujours l'epoch la plus récente
+### VAE produces blurry reconstructions
 
-## Licence
+- Increase `perceptual_weight`
+- Decrease `kl_weight`
+- Increase model capacity (`channels`)
+
+### LDM doesn't converge
+
+- Check VAE quality first
+- Verify `scale_factor` is close to 1
+- Increase `num_train_timesteps`
+
+### Validation images are black
+
+- Check data normalization
+- Verify background masking works correctly
+- Adjust percentiles in `normalize_batch_for_display`
+
+______________________________________________________________________
+
+## License
 
 Copyright (c) MONAI Consortium
 Licensed under the Apache License, Version 2.0
 
-## Contact
+______________________________________________________________________
 
-Pour toute question sur le code ou la méthodologie :
+## Citation
 
-- **Tuong Vy PHAM** : tv.pham1996@gmail.com
+If you use this code, please cite the original MONAI framework:
 
-## Références
+```bibtex
+@article{monai2020,
+  title={MONAI: An open-source framework for deep learning in healthcare imaging},
+  author={MONAI Consortium},
+  journal={arXiv preprint arXiv:2211.02701},
+  year={2022}
+}
+```
 
-Le code s'appuie sur :
+## References
 
-- [MONAI](https://monai.io/) - Medical Open Network for AI
+- [MONAI Framework](https://monai.io/)
 - [Latent Diffusion Models](https://arxiv.org/abs/2112.10752) - Rombach et al.
 - [Auto-Encoding Variational Bayes](https://arxiv.org/abs/1312.6114) - Kingma & Welling
 
-## Troubleshooting
+______________________________________________________________________
 
-### Erreur CUDA Out of Memory
+## Contact
 
-- Réduire `batch_size` dans la config
-- Réduire `patch_size`
-- Activer gradient checkpointing (si disponible dans le modèle)
+For questions or issues:
 
-### Reconstruction floue (VAE)
-
-- Augmenter `perceptual_weight`
-- Réduire `kl_weight`
-- Augmenter le nombre de canaux
-
-### LDM ne converge pas
-
-- Vérifier que le `scale_factor` est proche de 1
-- Vérifier la qualité du VAE pré-entraîné
-- Augmenter `num_train_timesteps`
-
-### Images de validation noires
-
-- Vérifier la normalisation des données
-- Vérifier que le masque (pixels non-nuls) est correct
-- Ajuster les percentiles dans `normalize_batch_for_display`
+- **Author**: Tuong Vy PHAM (tv.pham1996@gmail.com)
+- **Issues**: Please open an issue on the repository

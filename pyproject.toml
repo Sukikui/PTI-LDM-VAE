@@ -8,7 +8,9 @@ dependencies = [
     "albumentations>=2.0.8",
     "dash>=3.2.0",
     "einops>=0.8.1",
+    "itk>=5.4.4.post1",
     "kaleido>=1.1.0",
+    "lpips>=0.1.4",
     "matplotlib>=3.10.7",
     "monai>=1.5.1",
     "numpy>=2.3.3",
@@ -17,6 +19,7 @@ dependencies = [
     "pandas>=2.3.3",
     "pillow>=11.3.0",
     "plotly>=6.3.1",
+    "python-dotenv>=1.1.1",
     "pyyaml>=6.0.3",
     "scikit-image>=0.25.2",
     "scikit-learn>=1.7.2",
@@ -29,6 +32,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "umap>=0.1.1",
     "umap-learn>=0.5.9.post2",
+    "wandb>=0.22.2",
 ]
 
 [dependency-groups]

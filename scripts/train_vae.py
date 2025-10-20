@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import os
 import sys
@@ -8,97 +7,70 @@ from pathlib import Path
 
 import tifffile
 import torch
+from dotenv import load_dotenv
+from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.losses import PatchAdversarialLoss, PerceptualLoss
 from monai.networks.nets import PatchDiscriminator
 from monai.utils import set_determinism
 from torch.nn import L1Loss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+import wandb
 from pti_ldm_vae.data import create_vae_dataloaders
 from pti_ldm_vae.models import VAEModel, compute_kl_loss
 from pti_ldm_vae.utils.distributed import setup_ddp
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
+# Load environment variables from .env file
+load_dotenv()
+
 
 def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="VAE Training Script")
+    """Parse command line arguments (simplified)."""
+    parser = argparse.ArgumentParser(description="VAE Training Script - Simplified Configuration")
 
-    # Config files (original)
-    parser.add_argument(
-        "-e",
-        "--environment-file",
-        default="./config/environment_tif.json",
-        help="Environment json file that stores environment paths",
-    )
+    # Required: unified config file
     parser.add_argument(
         "-c",
         "--config-file",
-        default="./config/config_train_16g_cond.json",
-        help="Config json file that stores hyper-parameters",
+        default="./config/vae_config.json",
+        help="Path to unified JSON configuration file",
     )
 
-    # Training options
-    parser.add_argument("-g", "--gpus", default=1, type=int, help="Number of GPUs per node")
-
-    # Data options (NEW)
-    parser.add_argument("--data-dir", help="Override data directory from config")
-    parser.add_argument(
-        "--data-source",
-        choices=["edente", "dente", "both"],
-        default="edente",
-        help="Data source: 'edente', 'dente', or 'both' (default: edente)"
-    )
-    parser.add_argument(
-        "--train-split",
-        type=float,
-        default=0.9,
-        help="Train/val split ratio (default: 0.9)"
-    )
-    parser.add_argument(
-        "--val-dir",
-        help="Separate validation directory (overrides split)"
-    )
-    parser.add_argument(
-        "--subset-size",
-        type=int,
-        help="Use only first N images for debugging"
-    )
-
-    # Training hyperparameters (NEW)
+    # Essential overrides
+    parser.add_argument("-g", "--gpus", default=1, type=int, help="Number of GPUs for training (default: 1)")
     parser.add_argument("--batch-size", type=int, help="Override batch size from config")
+    parser.add_argument("--lr", type=float, help="Override learning rate from config")
     parser.add_argument("--max-epochs", type=int, help="Override max epochs from config")
-    parser.add_argument("--lr", type=float, help="Override learning rate")
-    parser.add_argument("--kl-weight", type=float, help="Override KL divergence weight")
 
-    # Performance options (NEW)
+    # Performance options (kept from CLI for convenience)
     parser.add_argument(
         "--num-workers",
         type=int,
         default=4,
-        help="Number of dataloader workers (default: 4)"
+        help="Number of dataloader workers (default: 4)",
     )
     parser.add_argument(
         "--cache-rate",
         type=float,
         default=0.0,
-        help="Fraction of dataset to cache in RAM, 0.0 to 1.0 (default: 0.0)"
+        help="Fraction of data to cache in RAM, 0.0-1.0 (default: 0.0)",
     )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
+
+    # Debug option
+    parser.add_argument("--subset-size", type=int, help="Use only N images for debugging")
 
     return parser.parse_args()
 
 
 def setup_environment(args):
     """Setup distributed training environment and device."""
+    # Check if CUDA is available
+    use_cuda = torch.cuda.is_available()
+
     ddp_bool = args.gpus > 1
     if ddp_bool:
         rank = int(os.environ["LOCAL_RANK"])
@@ -107,14 +79,15 @@ def setup_environment(args):
     else:
         rank = 0
         world_size = 1
-        device = 0
+        device = torch.device("cuda:0" if use_cuda else "cpu")
         dist = None
 
-    torch.cuda.set_device(device)
-    print(f"Using device: {device}")
+    if use_cuda:
+        torch.cuda.set_device(device)
+        torch.backends.cudnn.benchmark = True
 
+    print(f"Using device: {device}")
     print_config()
-    torch.backends.cudnn.benchmark = True
     torch.set_num_threads(4)
     torch.autograd.set_detect_anomaly(True)
 
@@ -122,31 +95,75 @@ def setup_environment(args):
 
 
 def load_config(args):
-    """Load and merge configuration files with CLI overrides."""
-    env_dict = json.load(open(args.environment_file))["vae"]
-    config_dict = json.load(open(args.config_file))
+    """Load unified configuration file with CLI overrides using MONAI ConfigParser."""
+    # Use MONAI's ConfigParser to handle @ references automatically
+    parser = ConfigParser()
+    parser.read_config(args.config_file)
+    parser.parse(True)  # Parse @ references
 
-    for k, v in env_dict.items():
-        setattr(args, k, v)
-    for k, v in config_dict.items():
+    config = parser.get_parsed_content()
+
+    # Apply all config values to args
+    for k, v in config.items():
         setattr(args, k, v)
 
-    # Apply CLI overrides
-    if args.data_dir:
-        args.data_base_dir = args.data_dir
+    # Apply CLI overrides (only essential ones)
     if args.batch_size:
         args.autoencoder_train["batch_size"] = args.batch_size
     if args.max_epochs:
         args.autoencoder_train["max_epochs"] = args.max_epochs
     if args.lr:
         args.autoencoder_train["lr"] = args.lr
-    if args.kl_weight:
-        args.autoencoder_train["kl_weight"] = args.kl_weight
 
+    # Set derived paths
     args.model_dir = os.path.join(args.run_dir, "trained_weights")
-    args.tfevent_path = os.path.join(args.run_dir, "tfevent")
 
     return args
+
+
+def init_wandb(args, rank):
+    """Initialize Weights & Biases logging."""
+    if rank != 0 or not args.wandb.get("enabled", True):
+        return None
+
+    # Get W&B config from args and env
+    project = os.getenv("WANDB_PROJECT", args.wandb.get("project", "pti-ldm-vae"))
+    entity = args.wandb.get("entity") or os.getenv("WANDB_ENTITY")
+
+    # Auto-generate run name from run_dir if not provided
+    run_name = args.wandb.get("name")
+    if run_name is None:
+        run_name = Path(args.run_dir).name
+
+    tags = args.wandb.get("tags", [])
+    notes = args.wandb.get("notes", "")
+
+    # Initialize W&B
+    wandb.init(
+        project=project,
+        entity=entity,
+        name=run_name,
+        tags=tags,
+        notes=notes,
+        config={
+            "architecture": "VAE",
+            "spatial_dims": args.spatial_dims,
+            "latent_channels": args.latent_channels,
+            "channels": args.autoencoder_def["channels"],
+            "num_res_blocks": args.autoencoder_def["num_res_blocks"],
+            "batch_size": args.autoencoder_train["batch_size"],
+            "lr": args.autoencoder_train["lr"],
+            "max_epochs": args.autoencoder_train["max_epochs"],
+            "kl_weight": args.autoencoder_train["kl_weight"],
+            "perceptual_weight": args.autoencoder_train["perceptual_weight"],
+            "recon_loss": args.autoencoder_train["recon_loss"],
+            "data_source": args.data_source,
+            "augment": args.augment,
+        },
+    )
+
+    print(f"✨ W&B run initialized: {wandb.run.url}")
+    return wandb
 
 
 def create_models(args, device, ddp_bool, rank):
@@ -236,7 +253,7 @@ def train_epoch(
     device,
     rank,
     total_step,
-    tensorboard_writer,
+    use_wandb,
     ddp_bool,
     max_epochs,
 ):
@@ -280,9 +297,9 @@ def train_epoch(
             optimizer_d.step()
 
         # Logging
-        if rank == 0:
+        if rank == 0 and use_wandb:
             total_step += 1
-            tensorboard_writer.add_scalar("train_recon_loss_iter", recons_loss, total_step)
+            wandb.log({"train/recon_loss": recons_loss.item(), "train/step": total_step}, step=total_step)
 
             if step == 0:
                 with torch.no_grad():
@@ -295,7 +312,7 @@ def train_epoch(
                     diff_disp = torch.rot90(normalize_batch_for_display(diff), k=3, dims=[2, 3])[0]
 
                     triplet = torch.cat([img_disp, recon_disp, diff_disp], dim=2)
-                    tensorboard_writer.add_image("train_triplets", triplet, global_step=total_step)
+                    wandb.log({"train/triplets": wandb.Image(triplet.permute(1, 2, 0).numpy())}, step=total_step)
 
     return total_step
 
@@ -311,7 +328,7 @@ def validate(
     device,
     rank,
     ddp_bool,
-    tensorboard_writer,
+    use_wandb,
 ):
     """Run validation."""
     autoencoder.eval()
@@ -363,10 +380,11 @@ def validate(
 
     val_recon_epoch_loss = val_recon_epoch_loss / (step + 1)
 
-    if rank == 0:
-        tensorboard_writer.add_scalar("val_recon_loss", val_recon_epoch_loss, epoch)
+    if rank == 0 and use_wandb:
+        log_dict = {"val/recon_loss": val_recon_epoch_loss, "epoch": epoch}
         for step_idx, triplet in triplets:
-            tensorboard_writer.add_image(f"val_triplets/step{step_idx:03}", triplet, global_step=epoch)
+            log_dict[f"val/triplet_step{step_idx:03}"] = wandb.Image(triplet.permute(1, 2, 0).numpy())
+        wandb.log(log_dict)
 
     return val_recon_epoch_loss
 
@@ -385,7 +403,7 @@ def save_checkpoint(
     rank,
 ):
     """Save model checkpoints."""
-    if rank != 0 or epoch < 10:
+    if rank != 0:
         return best_epoch_saved
 
     # Save last
@@ -417,7 +435,7 @@ def save_best_checkpoint(
     rank,
 ):
     """Save best model checkpoint."""
-    if rank != 0 or epoch < 10:
+    if rank != 0:
         return best_val_loss, best_epoch_saved
 
     if val_loss >= best_val_loss:
@@ -466,9 +484,17 @@ def main() -> None:
     ddp_bool, rank, world_size, device, dist = setup_environment(args)
     args = load_config(args)
 
+    # Check if run_dir already exists
     if rank == 0:
+        run_dir = Path(args.run_dir)
+        if run_dir.exists() and not args.resume_ckpt:
+            raise ValueError(
+                f"Run directory already exists: {run_dir}\n"
+                f"To prevent overwriting previous runs:\n"
+                f"  1. Change 'run_dir' in your config file, or\n"
+                f"  2. Set 'resume_ckpt: true' to continue training"
+            )
         Path(args.model_dir).mkdir(parents=True, exist_ok=True)
-        Path(args.tfevent_path).mkdir(parents=True, exist_ok=True)
 
     set_determinism(args.seed)
 
@@ -503,9 +529,15 @@ def main() -> None:
         args, autoencoder, discriminator, optimizer_g, optimizer_d, device, ddp_bool
     )
 
-    # Tensorboard
-    if rank == 0:
-        tensorboard_writer = SummaryWriter(args.tfevent_path)
+    # Initialize W&B
+    use_wandb = init_wandb(args, rank) is not None
+
+    # Define W&B metrics to allow different step semantics
+    if use_wandb and rank == 0:
+        wandb.define_metric("train/*", step_metric="train/step")
+        wandb.define_metric("val/*", step_metric="epoch")
+        wandb.define_metric("epoch")
+        wandb.define_metric("time_per_epoch", step_metric="epoch")
 
     # Training parameters
     kl_weight = args.autoencoder_train["kl_weight"]
@@ -534,7 +566,7 @@ def main() -> None:
             device,
             rank,
             total_step,
-            tensorboard_writer if rank == 0 else None,
+            use_wandb,
             ddp_bool,
             max_epochs,
         )
@@ -555,11 +587,13 @@ def main() -> None:
                 device,
                 rank,
                 ddp_bool,
-                tensorboard_writer if rank == 0 else None,
+                use_wandb,
             )
 
             if rank == 0:
                 print(f"Epoch {epoch} val_loss: {val_loss:.4f} | Time: {time.time() - start_time:.1f}s")
+                if use_wandb:
+                    wandb.log({"time_per_epoch": time.time() - start_time})
 
             best_epoch_saved = save_checkpoint(
                 epoch,
@@ -589,6 +623,10 @@ def main() -> None:
                 ddp_bool,
                 rank,
             )
+
+    # Finish W&B run
+    if rank == 0 and use_wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":

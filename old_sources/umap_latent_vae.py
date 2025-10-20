@@ -27,7 +27,7 @@ couleur_par_examen = True  # True = couleurs par examen, False = bleu/orange
 
 # === CONFIGURATION ===
 vae_weights = "../data/weights/autoencoder_epoch73.pth"
-config_file = "../config/config_train_16g_cond.json"
+config_file = "config_train_16g_cond.json"
 folder_edentee = "../data/edente/"
 folder_dentee = "../data/dente/"
 folder_output = "../results/umap_old_script_output"
