@@ -3,7 +3,7 @@ name = "pti-ldm-vae"
 version = "0.1.0"
 description = "Medical Imaging Project for Edentulous Image Prediction using LDM and VAE"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "albumentations>=2.0.8",
     "dash>=3.2.0",
