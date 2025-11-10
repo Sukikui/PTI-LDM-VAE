@@ -20,6 +20,7 @@ from tqdm import tqdm
 import wandb
 from pti_ldm_vae.data import create_vae_dataloaders
 from pti_ldm_vae.models import VAEModel, compute_kl_loss
+from pti_ldm_vae.utils import ensure_three_channels
 from pti_ldm_vae.utils.distributed import setup_ddp
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
@@ -273,7 +274,9 @@ def train_epoch(
 
         recons_loss = intensity_loss(reconstruction, images)
         kl_loss = compute_kl_loss(z_mu, z_sigma)
-        p_loss = loss_perceptual(reconstruction.float(), images.float())
+        recon_rgb = ensure_three_channels(reconstruction.float())
+        images_rgb = ensure_three_channels(images.float())
+        p_loss = loss_perceptual(recon_rgb, images_rgb)
         loss_g = recons_loss + kl_weight * kl_loss + perceptual_weight * p_loss
 
         if epoch > 5:  # warmup epochs
@@ -355,8 +358,10 @@ def validate(
 
         with torch.no_grad():
             reconstruction, z_mu, z_sigma = autoencoder(images)
+            recon_rgb = ensure_three_channels(reconstruction.float())
+            images_rgb = ensure_three_channels(images.float())
             recons_loss = intensity_loss(reconstruction.float(), images.float()) + perceptual_weight * loss_perceptual(
-                reconstruction.float(), images.float()
+                recon_rgb, images_rgb
             )
 
         val_recon_epoch_loss += recons_loss.item()

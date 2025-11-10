@@ -1,6 +1,8 @@
 import os
 import random
+from collections.abc import Callable
 from glob import glob
+from typing import Any
 
 import torch
 from monai.data import DataLoader, Dataset
@@ -17,6 +19,75 @@ from monai.transforms import (
 )
 
 from .transforms import ApplyLocalNormd, LocalNormalizeByMask, ToTuple
+
+
+class IdentityTensorTransform:
+    """Return data unchanged (picklable helper for DataLoader workers)."""
+
+    def __call__(self, data: Any) -> Any:
+        """Forward data without modifications.
+
+        Args:
+            data (Any): Input data element.
+
+        Returns:
+            Any: Same object without changes.
+        """
+        return data
+
+
+class AlbumentationsSingleChannel:
+    """Apply an albumentations transform to single-channel tensors."""
+
+    def __init__(self, albumentations_transform: Callable):
+        """Initialize the transform wrapper.
+
+        Args:
+            albumentations_transform (Callable): Albumentations callable returning a dict with an ``image`` key.
+        """
+        self.albumentations_transform = albumentations_transform
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Apply augmentation to a single-channel tensor.
+
+        Args:
+            tensor (torch.Tensor): Input tensor of shape [1, H, W].
+
+        Returns:
+            torch.Tensor: Augmented tensor with preserved shape.
+        """
+        img_np = tensor.squeeze(0).numpy()
+        augmented = self.albumentations_transform(image=img_np)
+        return torch.from_numpy(augmented["image"][None, ...])
+
+
+class AlbumentationsPairedChannels:
+    """Apply an albumentations transform to paired tensors (target/condition)."""
+
+    def __init__(self, albumentations_transform: Callable):
+        """Initialize the paired transform wrapper.
+
+        Args:
+            albumentations_transform (Callable): Albumentations callable returning ``image`` and
+                ``condition_image`` keys.
+        """
+        self.albumentations_transform = albumentations_transform
+
+    def __call__(self, data: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Augment both images within the provided dict.
+
+        Args:
+            data (dict): Dictionary with ``image`` and ``condition_image`` tensors.
+
+        Returns:
+            dict: Dictionary containing the augmented tensors.
+        """
+        img = data["image"].squeeze(0).numpy()
+        cond = data["condition_image"].squeeze(0).numpy()
+        augmented = self.albumentations_transform(image=img, condition_image=cond)
+        data["image"] = torch.from_numpy(augmented["image"][None, ...])
+        data["condition_image"] = torch.from_numpy(augmented["condition_image"][None, ...])
+        return data
 
 
 def _print_dataset_stats(
@@ -178,18 +249,9 @@ def create_vae_dataloaders(
         from .augmentation import get_albumentations_transform
 
         albumentations_transform = get_albumentations_transform()
-
-        class AugAlb:
-            def __call__(self, img):
-                img_np = img.squeeze(0).numpy()
-                aug = albumentations_transform(image=img_np)
-                return torch.from_numpy(aug["image"][None, ...])
-
-        aug_monai = AugAlb()
+        aug_monai = AlbumentationsSingleChannel(albumentations_transform)
     else:
-
-        def aug_monai(x):
-            return x
+        aug_monai = IdentityTensorTransform()
 
     # Define transforms
     transforms = Compose(
@@ -342,21 +404,9 @@ def create_ldm_dataloaders(
         from .augmentation import get_albumentations_transform
 
         albumentations_transform = get_albumentations_transform()
-
-        class AugAlb:
-            def __call__(self, data):
-                img = data["image"].squeeze(0).numpy()
-                cond = data["condition_image"].squeeze(0).numpy()
-                aug = albumentations_transform(image=img, condition_image=cond)
-                data["image"] = torch.from_numpy(aug["image"][None, ...])
-                data["condition_image"] = torch.from_numpy(aug["condition_image"][None, ...])
-                return data
-
-        aug_monai = AugAlb()
+        aug_monai = AlbumentationsPairedChannels(albumentations_transform)
     else:
-
-        def aug_monai(x):
-            return x
+        aug_monai = IdentityTensorTransform()
 
     # Define transforms (ALWAYS resize to patch_size)
     transform_list = [

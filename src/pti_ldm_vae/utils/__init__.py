@@ -1,4 +1,5 @@
 from .distributed import setup_ddp
+from .losses import ensure_three_channels
 from .visualization import (
     normalize_batch_for_display,
     normalize_image_to_uint8,
@@ -7,6 +8,7 @@ from .visualization import (
 )
 
 __all__ = [
+    "ensure_three_channels",
     "normalize_batch_for_display",
     "normalize_image_to_uint8",
     "setup_ddp",
