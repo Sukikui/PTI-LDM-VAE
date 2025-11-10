@@ -1,0 +1,91 @@
+{
+  "_comment": "VAE Training Configuration - Single unified config file",
+
+  "data_base_dir": "./data",
+  "run_dir": "./runs/vae_both",
+  "resume_ckpt": false,
+  "checkpoint_dir": "",
+
+  "data_source": "both",
+  "_data_source_comment": "Which images to load: 'edente', 'dente', or 'both'",
+
+  "train_split": 0.9,
+  "_train_split_comment": "Train/val split ratio (0.9 = 90% train, 10% val)",
+
+  "val_dir": null,
+  "_val_dir_comment": "Separate validation directory (overrides train_split if set)",
+
+  "augment": false,
+  "spatial_dims": 2,
+  "image_channels": 1,
+  "latent_channels": 4,
+
+  "autoencoder_def": {
+    "spatial_dims": "@spatial_dims",
+    "in_channels": "@image_channels",
+    "out_channels": "@image_channels",
+    "latent_channels": "@latent_channels",
+    "_latent_channels_comment": "Number of channels in latent space (affects compression ratio). Higher = more info preserved, less compression",
+
+    "channels": [64, 128, 256],
+    "_channels_comment": "Channel progression through encoder/decoder levels. Defines model capacity. Higher = more parameters, better quality, slower",
+
+    "num_res_blocks": 2,
+    "_num_res_blocks_comment": "Number of residual blocks per level. More blocks = better quality but slower training",
+
+    "norm_num_groups": 32,
+    "_norm_num_groups_comment": "Number of groups for GroupNorm. Must divide channel counts evenly (e.g., 32 divides 64, 128, 256)",
+
+    "norm_eps": 1e-06,
+    "_norm_eps_comment": "Epsilon for numerical stability in normalization",
+
+    "attention_levels": [false, false, false],
+    "_attention_levels_comment": "Enable self-attention at each level [level1, level2, level3]. true = slower but better quality, false = faster",
+
+    "with_encoder_nonlocal_attn": true,
+    "_encoder_attn_comment": "Non-local attention in encoder bottleneck. Captures global context across the image",
+
+    "with_decoder_nonlocal_attn": true,
+    "_decoder_attn_comment": "Non-local attention in decoder bottleneck. Improves reconstruction quality"
+  },
+
+  "autoencoder_train": {
+    "batch_size": 8,
+    "patch_size": [256, 256],
+
+    "lr": 2.5e-5,
+    "_lr_comment": "Learning rate (auto-scaled by world_size in multi-GPU training). Single GPU: 2.5e-5, 4 GPUs: effective LR = 2.5e-5 × 4",
+
+    "perceptual_weight": 1.0,
+    "_perceptual_weight_comment": "Weight for VGG perceptual loss. Higher = better texture quality, lower = faster convergence",
+
+    "kl_weight": 1e-6,
+    "_kl_weight_comment": "Weight for KL divergence. Controls latent regularization. Too high = blurry reconstructions, too low = unstructured latent. Range: 1e-6 to 1e-5",
+
+    "recon_loss": "l1",
+    "_recon_loss_comment": "Reconstruction loss type: 'l1' = sharper details, 'l2' = smoother results",
+
+    "max_epochs": 100,
+    "val_interval": 1
+  },
+
+  "wandb": {
+    "enabled": true,
+    "_enabled_comment": "Enable Weights & Biases logging. Set to false to disable",
+
+    "project": "pti-ldm-vae",
+    "_project_comment": "W&B project name. Can be overridden by WANDB_PROJECT env variable",
+
+    "entity": null,
+    "_entity_comment": "W&B username or team. If null, uses WANDB_ENTITY from .env file",
+
+    "name": "vae_both_baseline",
+    "_name_comment": "Run name. If null, auto-generated from run_dir (e.g., 'vae_baseline')",
+
+    "tags": ["vae", "both"],
+    "_tags_comment": "Tags for organizing runs in W&B UI",
+
+    "notes": "VAE training with standard configuration",
+    "_notes_comment": "Description of this training run"
+  }
+}
