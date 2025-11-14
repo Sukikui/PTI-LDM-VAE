@@ -193,8 +193,8 @@ def create_plotly_figure(
 def main() -> None:
     """Run static latent space analysis and generate high-res PNG visualizations.
 
-    This script generates static PNG files for latent space visualization using either UMAP or t-SNE.
-    Unlike the interactive version, this script saves output files and exits (no server).
+    This script generates static PNG files for latent space visualization using either UMAP or t-SNE. Unlike the
+    interactive version, this script saves output files and exits (no server).
     """
     args = parse_args()
     set_seed(args.seed)
@@ -340,7 +340,7 @@ def main() -> None:
         html_path = output_dir / output_filename.replace(".png", ".html")
         fig.write_html(str(html_path))
         print(f"⚠️  Could not export PNG (kaleido required). Saved HTML instead: {html_path}")
-        print(f"   Install kaleido with: pip install kaleido")
+        print("   Install kaleido with: pip install kaleido")
         print(f"   Error: {e}")
 
     # Compute statistics if two groups

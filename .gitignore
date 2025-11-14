@@ -42,10 +42,12 @@ wheels/
 *.pth
 *.ckpt
 *.ptEn
-runs/
 
 # VAE latents cache
 cache/
+
+# Results
+results/
 
 # Personal files and directories
 TODO.md

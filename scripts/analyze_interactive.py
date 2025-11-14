@@ -347,7 +347,7 @@ def main() -> None:
     app = dash.Dash(__name__)
 
     # Add global CSS to remove browser default margins/padding
-    app.index_string = '''
+    app.index_string = """
     <!DOCTYPE html>
     <html>
         <head>
@@ -372,7 +372,7 @@ def main() -> None:
             </footer>
         </body>
     </html>
-    '''
+    """
 
     # Create parameter controls based on method
     if args.method == "umap":
@@ -380,7 +380,16 @@ def main() -> None:
             [
                 html.Div(
                     [
-                        html.Label("n_neighbors", style={"fontWeight": "bold", "marginBottom": "5px", "marginTop": "10px", "display": "block", "paddingLeft": "20px"}),
+                        html.Label(
+                            "n_neighbors",
+                            style={
+                                "fontWeight": "bold",
+                                "marginBottom": "5px",
+                                "marginTop": "10px",
+                                "display": "block",
+                                "paddingLeft": "20px",
+                            },
+                        ),
                         dcc.Slider(
                             id="n-neighbors-slider",
                             min=5,
@@ -395,7 +404,16 @@ def main() -> None:
                 ),
                 html.Div(
                     [
-                        html.Label("min_dist", style={"fontWeight": "bold", "marginBottom": "5px", "marginTop": "10px", "display": "block", "paddingLeft": "20px"}),
+                        html.Label(
+                            "min_dist",
+                            style={
+                                "fontWeight": "bold",
+                                "marginBottom": "5px",
+                                "marginTop": "10px",
+                                "display": "block",
+                                "paddingLeft": "20px",
+                            },
+                        ),
                         dcc.Slider(
                             id="min-dist-slider",
                             min=0.0,
@@ -416,7 +434,16 @@ def main() -> None:
             [
                 html.Div(
                     [
-                        html.Label("perplexity", style={"fontWeight": "bold", "marginBottom": "5px", "marginTop": "10px", "display": "block", "paddingLeft": "20px"}),
+                        html.Label(
+                            "perplexity",
+                            style={
+                                "fontWeight": "bold",
+                                "marginBottom": "5px",
+                                "marginTop": "10px",
+                                "display": "block",
+                                "paddingLeft": "20px",
+                            },
+                        ),
                         dcc.Slider(
                             id="perplexity-slider",
                             min=5,
@@ -442,18 +469,21 @@ def main() -> None:
     app.layout = html.Div(
         [
             # Hidden divs to store data
-            dcc.Store(id="stored-projections", data={
-                "projections": None,
-                "method": args.method,
-                "latent_edente": latent_edente.tolist(),
-                "latent_dente": latent_dente.tolist() if latent_dente is not None else None,
-                "ids_edente": ids_edente,
-                "ids_dente": ids_dente,
-                "paths_edente": paths_edente,
-                "paths_dente": paths_dente,
-                "pca_components": None,
-                "seed": args.seed,
-            }),
+            dcc.Store(
+                id="stored-projections",
+                data={
+                    "projections": None,
+                    "method": args.method,
+                    "latent_edente": latent_edente.tolist(),
+                    "latent_dente": latent_dente.tolist() if latent_dente is not None else None,
+                    "ids_edente": ids_edente,
+                    "ids_dente": ids_dente,
+                    "paths_edente": paths_edente,
+                    "paths_dente": paths_dente,
+                    "pca_components": None,
+                    "seed": args.seed,
+                },
+            ),
             html.Div(
                 [
                     # Left: Plot
@@ -514,13 +544,14 @@ def main() -> None:
 
     # Callback to automatically recalculate projection when parameters change
     if args.method == "umap":
+
         @app.callback(
             Output("latent-plot", "figure"),
             [Input("n-neighbors-slider", "value"), Input("min-dist-slider", "value")],
         )
         def update_projection(n_neighbors_val, min_dist_val):
             print("\n" + "=" * 60)
-            print(f"Recalculating UMAP projection...")
+            print("Recalculating UMAP projection...")
             print(f"n_neighbors: {n_neighbors_val}, min_dist: {min_dist_val}")
             print("=" * 60)
 
@@ -556,13 +587,14 @@ def main() -> None:
                 title,
             )
     else:  # tsne
+
         @app.callback(
             Output("latent-plot", "figure"),
             [Input("perplexity-slider", "value")],
         )
         def update_projection(perplexity_val):
             print("\n" + "=" * 60)
-            print(f"Recalculating t-SNE projection...")
+            print("Recalculating t-SNE projection...")
             print(f"perplexity: {perplexity_val}")
             print("=" * 60)
 

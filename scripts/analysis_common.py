@@ -137,9 +137,7 @@ def create_transforms(patch_size: tuple[int, int]) -> Compose:
     )
 
 
-def encode_single_image(
-    analyzer: LatentSpaceAnalyzer, image_path: str
-) -> tuple[np.ndarray, str]:
+def encode_single_image(analyzer: LatentSpaceAnalyzer, image_path: str) -> tuple[np.ndarray, str]:
     """Encode a single image to latent space.
 
     Args:

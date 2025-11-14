@@ -162,7 +162,7 @@ class LatentSpaceAnalyzer:
 
                 # Use deterministic encoding (mean of distribution) for reproducible analysis
                 # Instead of sampling from the distribution (encode_stage_2_inputs)
-                if hasattr(self.vae, 'encode_deterministic'):
+                if hasattr(self.vae, "encode_deterministic"):
                     z = self.vae.encode_deterministic(batch_tensor)
                 else:
                     # Fallback to stochastic encoding if deterministic method not available

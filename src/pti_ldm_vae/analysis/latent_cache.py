@@ -121,7 +121,7 @@ class LatentCache:
         """
         metadata_path = self._get_metadata_path(model_signature)
         if metadata_path.exists():
-            with open(metadata_path, "r") as f:
+            with open(metadata_path) as f:
                 return json.load(f)
         return {"images": {}}
 
@@ -185,10 +185,7 @@ class LatentCache:
 
             # Check if this exact image version is in cache
             image_metadata = metadata["images"].get(abs_img_path, {})
-            cache_valid = (
-                cache_file_path.exists()
-                and image_metadata.get("cache_key") == cache_key
-            )
+            cache_valid = cache_file_path.exists() and image_metadata.get("cache_key") == cache_key
 
             if cache_valid:
                 # Cache hit - load from cache
@@ -283,9 +280,7 @@ class LatentCache:
             metadata = self._load_metadata(model_sig)
 
             # Calculate cache size
-            total_size = sum(
-                f.stat().st_size for f in model_dir.glob("*.npz") if f.is_file()
-            )
+            total_size = sum(f.stat().st_size for f in model_dir.glob("*.npz") if f.is_file())
 
             stats[model_sig] = {
                 "model": metadata.get("model", "unknown"),
