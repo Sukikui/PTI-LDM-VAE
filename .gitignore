@@ -37,11 +37,12 @@ wheels/
 *.b2nd
 *.tif
 
-# Model checkpoint files
+# Model files & Attributes
 *.pt
 *.pth
 *.ckpt
 *.ptEn
+*.json
 
 # VAE latents cache
 cache/
@@ -51,10 +52,12 @@ results/
 
 # Personal files and directories
 TODO.md
-old_sources/
-
-# Environment variables (contains API keys and secrets)
+TUTO_CBP_UNIX.md
 .env
 
 # W&B local files
 wandb/
+
+# Legacy files
+old_sources/
+legacy_config/

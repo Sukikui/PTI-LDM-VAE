@@ -4,14 +4,15 @@ Training, inference, and analysis scripts for the PTI-LDM-VAE project.
 
 ## Quick Reference
 
-| Script                   | Purpose                                     |
-| ------------------------ | ------------------------------------------- |
-| `train_vae.py`           | Train a Variational Autoencoder             |
-| `train_ldm.py`           | Train a conditional Latent Diffusion Model  |
-| `inference_vae.py`       | Run VAE inference on images                 |
-| `inference_ldm.py`       | Generate images with trained LDM            |
-| `analyze_static.py`      | Generate static latent space visualizations |
-| `analyze_interactive.py` | Interactive latent space exploration        |
+| Script                    | Purpose                                     |
+| ------------------------- | ------------------------------------------- |
+| `train_vae.py`            | Train a Variational Autoencoder             |
+| `train_ldm.py`            | Train a conditional Latent Diffusion Model  |
+| `inference_vae.py`        | Run VAE inference on images                 |
+| `inference_ldm.py`        | Generate images with trained LDM            |
+| `analyze_static.py`       | Generate static latent space visualizations |
+| `analyze_interactive.py`  | Interactive latent space exploration        |
+| `compute_mask_metrics.py` | Measure edente/dente mask widths/heights    |
 
 ______________________________________________________________________
 
@@ -163,6 +164,39 @@ python scripts/inference_ldm.py \
 
 - `results_tif/` - Raw TIF files (condition | target | synthetic)
 - `results_png/` - PNG files normalized for visualization
+
+______________________________________________________________________
+
+### compute_mask_metrics.py
+
+Compute geometric attributes (height and width) for paired edente/dente masks. Edente widths are sampled evenly top-to-bottom inside each bounding box, and dente widths are measured relative to fixed heights specified in millimeters.
+
+**Usage:**
+
+```bash
+python scripts/compute_mask_metrics.py \
+  --edente-dir data/edente \
+  --dente-dir data/dente \
+  --output-edente data/attributes_edente.json \
+  --output-dente data/attributes_dente.json \
+  --pixel-size-mm 0.15 \
+  --dente-heights-mm 10 14 18 22 \
+  --edente-width-samples 5
+```
+
+**Arguments:**
+
+- `--edente-dir`: Directory containing edente masks (default: `./data/edente`).
+- `--dente-dir`: Directory containing dente masks (default: `./data/dente`).
+- `--output-edente`: Output JSON path for edente metrics (default: `./data/attributes_edente.json`).
+- `--output-dente`: Output JSON path for dente metrics (default: `./data/attributes_dente.json`).
+- `--pixel-size-mm`: Pixel size in millimeters used to convert dente heights (default: `0.15`).
+- `--dente-heights-mm`: Heights in millimeters (from the bottom) at which dente widths are measured (default: `5 10 14 18 22`).
+- `--edente-width-samples`: Number of evenly spaced widths across the edente bounding box (default: `5`).
+
+**Outputs:**
+
+- Two JSON files keyed by mask filename. Each entry contains the edente bounding-box height, the list of `width_i` measurements, and for dente masks the requested physical heights plus pixel widths at those locations.
 
 ______________________________________________________________________
 
