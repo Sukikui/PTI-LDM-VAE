@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 import wandb
 from pti_ldm_vae.data import create_vae_dataloaders
-from pti_ldm_vae.models import VAEModel, compute_kl_loss
+from pti_ldm_vae.models import VAEModel, compute_ar_vae_loss, compute_kl_loss
 from pti_ldm_vae.utils import ensure_three_channels
 from pti_ldm_vae.utils.distributed import setup_ddp
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
@@ -163,6 +163,17 @@ def init_wandb(args, rank):
         },
     )
 
+    # Log full config for traceability
+    try:
+        with open(args.config_file, encoding="utf-8") as cfg_file:
+            full_cfg = cfg_file.read()
+        wandb.config.update({"full_config_json": full_cfg}, allow_val_change=True)
+        artifact = wandb.Artifact("vae-config", type="config")
+        artifact.add_file(args.config_file)
+        wandb.log_artifact(artifact)
+    except Exception as exc:
+        print(f"[WARN] Could not upload config file to W&B: {exc}")
+
     print(f"✨ W&B run initialized: {wandb.run.url}")
     return wandb
 
@@ -257,6 +268,11 @@ def train_epoch(
     use_wandb,
     ddp_bool,
     max_epochs,
+    ar_vae_enabled,
+    regularized_attributes,
+    pairwise_mode,
+    subset_pairs,
+    ar_gamma,
 ):
     """Train for one epoch."""
     autoencoder.train()
@@ -265,12 +281,34 @@ def train_epoch(
     if ddp_bool:
         train_loader.sampler.set_epoch(epoch)
 
+    raw_mapping = regularized_attributes.get("attribute_latent_mapping", {}) if regularized_attributes else {}
+    attribute_latent_mapping = {k: v for k, v in raw_mapping.items() if not str(k).startswith("_")}
+    delta_global = regularized_attributes.get("delta_global", {}) if regularized_attributes else {}
+
     for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{max_epochs}")):
-        images = batch.to(device)
+        images: torch.Tensor
+        batch_attributes: dict[str, torch.Tensor] | None = None
+
+        if isinstance(batch, tuple):
+            images, batch_attributes = batch
+        else:
+            images = batch
+
+        images = images.to(device)
+        if batch_attributes is not None:
+            batch_attributes = {k: v.to(device) for k, v in batch_attributes.items()}
+        elif ar_vae_enabled:
+            raise ValueError("AR-VAE is enabled but attributes are missing from the batch.")
 
         # Train generator
         optimizer_g.zero_grad(set_to_none=True)
         reconstruction, z_mu, z_sigma = autoencoder(images)
+
+        latent_vectors = z_mu
+        if latent_vectors.dim() == 4:
+            latent_vectors = latent_vectors.mean(dim=(2, 3))
+        elif latent_vectors.dim() != 2:
+            raise ValueError(f"Unexpected latent shape: {latent_vectors.shape}")
 
         recons_loss = intensity_loss(reconstruction, images)
         kl_loss = compute_kl_loss(z_mu, z_sigma)
@@ -283,6 +321,21 @@ def train_epoch(
             logits_fake = discriminator(reconstruction.contiguous().float())[-1]
             generator_loss = adv_loss(logits_fake, target_is_real=True, for_discriminator=False)
             loss_g = loss_g + adv_weight * generator_loss
+
+        ar_loss = torch.tensor(0.0, device=device)
+        ar_losses_per_attr: dict[str, torch.Tensor] = {}
+        ar_pairs: dict[str, int] = {}
+        ar_deltas: dict[str, float] = {}
+        if ar_vae_enabled:
+            ar_loss, ar_losses_per_attr, ar_pairs, ar_deltas = compute_ar_vae_loss(
+                latent_vectors=latent_vectors,
+                attributes=batch_attributes if batch_attributes is not None else {},
+                attribute_latent_mapping=attribute_latent_mapping,
+                pairwise_mode=pairwise_mode,
+                subset_pairs=subset_pairs,
+                delta_global=delta_global,
+            )
+            loss_g = loss_g + ar_gamma * ar_loss
 
         loss_g.backward()
         optimizer_g.step()
@@ -302,7 +355,21 @@ def train_epoch(
         # Logging
         if rank == 0 and use_wandb:
             total_step += 1
-            wandb.log({"train/recon_loss": recons_loss.item(), "train/step": total_step}, step=total_step)
+            log_payload = {
+                "train/recon_loss": recons_loss.item(),
+                "train/step": total_step,
+                "train/loss_total": loss_g.item(),
+            }
+            if ar_vae_enabled:
+                log_payload["train/ar_loss_total"] = ar_loss.item()
+                for attr_name, loss_attr in ar_losses_per_attr.items():
+                    log_payload[f"train/ar_loss_{attr_name}"] = loss_attr.item()
+                for attr_name, count in ar_pairs.items():
+                    log_payload[f"train/ar_pairs_{attr_name}"] = count
+                for attr_name, delta_attr in ar_deltas.items():
+                    log_payload[f"train/ar_delta_{attr_name}"] = delta_attr
+
+            wandb.log(log_payload, step=total_step)
 
             if step == 0:
                 with torch.no_grad():
@@ -332,11 +399,13 @@ def validate(
     rank,
     ddp_bool,
     use_wandb,
+    log_triplet_every,
 ):
     """Run validation."""
     autoencoder.eval()
     val_recon_epoch_loss = 0
     triplets = []
+    max_triplets_to_log = 1
 
     # Saving parameters
     start_epoch_to_save = 10
@@ -354,7 +423,10 @@ def validate(
         dir_diff.mkdir(parents=True, exist_ok=True)
 
     for step, batch in enumerate(val_loader):
-        images = batch.to(device)
+        if isinstance(batch, tuple):
+            images = batch[0].to(device)
+        else:
+            images = batch.to(device)
 
         with torch.no_grad():
             reconstruction, z_mu, z_sigma = autoencoder(images)
@@ -381,14 +453,16 @@ def validate(
             diff_disp = torch.rot90(normalize_batch_for_display(diff.unsqueeze(0).unsqueeze(0)), k=3, dims=[2, 3])[0]
 
             triplet = torch.cat([img_disp, recon_disp, diff_disp], dim=2)
-            triplets.append((step, triplet))
+            if len(triplets) < max_triplets_to_log and epoch % log_triplet_every == 0:
+                triplets.append((step, triplet))
 
     val_recon_epoch_loss = val_recon_epoch_loss / (step + 1)
 
     if rank == 0 and use_wandb:
         log_dict = {"val/recon_loss": val_recon_epoch_loss, "epoch": epoch}
-        for step_idx, triplet in triplets:
-            log_dict[f"val/triplet_step{step_idx:03}"] = wandb.Image(triplet.permute(1, 2, 0).numpy())
+        if epoch % log_triplet_every == 0:
+            for step_idx, triplet in triplets:
+                log_dict[f"val/triplet_step{step_idx:03}"] = wandb.Image(triplet.permute(1, 2, 0).numpy())
         wandb.log(log_dict)
 
     return val_recon_epoch_loss
@@ -488,6 +562,23 @@ def main() -> None:
     args = parse_args()
     ddp_bool, rank, world_size, device, dist = setup_environment(args)
     args = load_config(args)
+    regularized_attributes = (
+        getattr(args, "regularized_attributes", {}) if hasattr(args, "regularized_attributes") else {}
+    )
+    ar_vae_enabled = bool(
+        args.autoencoder_train.get("ar_vae_enabled", False) or regularized_attributes.get("enabled", False)
+    )
+    pairwise_mode = regularized_attributes.get("pairwise", "all")
+    subset_pairs = regularized_attributes.get("subset_pairs")
+    raw_gamma = args.autoencoder_train.get("ar_vae_weight", regularized_attributes.get("gamma", 0.0))
+    if isinstance(raw_gamma, str):
+        # Handle unresolved references like "@regularized_attributes.gamma" gracefully
+        try:
+            ar_gamma = float(raw_gamma)
+        except ValueError:
+            ar_gamma = float(regularized_attributes.get("gamma", 0.0))
+    else:
+        ar_gamma = float(raw_gamma)
 
     # Check if run_dir already exists
     if rank == 0:
@@ -519,10 +610,18 @@ def main() -> None:
         cache_rate=args.cache_rate,
         distributed=ddp_bool,
         world_size=world_size,
+        ar_vae_enabled=ar_vae_enabled,
+        regularized_attributes=regularized_attributes,
     )
 
     # Create models
     autoencoder, discriminator = create_models(args, device, ddp_bool, rank)
+
+    if rank == 0:
+        model_to_print = autoencoder.module if ddp_bool else autoencoder
+        print("\n=== Autoencoder model summary ===")
+        print(model_to_print)
+        print("=================================\n")
 
     # Create losses and optimizers
     intensity_loss, adv_loss, loss_perceptual, optimizer_g, optimizer_d = create_losses_and_optimizers(
@@ -550,6 +649,7 @@ def main() -> None:
     adv_weight = 0.5
     max_epochs = args.autoencoder_train["max_epochs"]
     val_interval = args.autoencoder_train["val_interval"]
+    log_triplet_every = 20
 
     # Training loop
     for epoch in range(start_epoch, max_epochs):
@@ -574,6 +674,11 @@ def main() -> None:
             use_wandb,
             ddp_bool,
             max_epochs,
+            ar_vae_enabled,
+            regularized_attributes,
+            pairwise_mode,
+            subset_pairs,
+            ar_gamma,
         )
 
         # Validation
@@ -593,6 +698,7 @@ def main() -> None:
                 rank,
                 ddp_bool,
                 use_wandb,
+                log_triplet_every,
             )
 
             if rank == 0:

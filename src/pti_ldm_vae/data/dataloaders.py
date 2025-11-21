@@ -1,3 +1,4 @@
+import json
 import os
 import random
 from collections.abc import Callable
@@ -90,6 +91,96 @@ class AlbumentationsPairedChannels:
         return data
 
 
+class DatasetWithAttributes:
+    """Wrap a base dataset to attach per-sample attributes."""
+
+    def __init__(self, base_dataset: Dataset, attributes: list[dict[str, float]]):
+        """Initialize the wrapper dataset.
+
+        Args:
+            base_dataset: Underlying dataset returning image tensors.
+            attributes: List of attribute dictionaries aligned with the dataset order.
+        """
+        self.base_dataset = base_dataset
+        self.attributes = attributes
+
+    def __len__(self) -> int:
+        """Return dataset size."""
+        return len(self.base_dataset)
+
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, dict[str, float]]:
+        """Return image tensor and its attributes."""
+        image = self.base_dataset[index]
+        return image, self.attributes[index]
+
+
+def collate_with_attributes(
+    batch: list[tuple[torch.Tensor, dict[str, float]]],
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Custom collate to stack images and group attributes."""
+    images = torch.stack([item[0] for item in batch], dim=0)
+    attribute_keys = batch[0][1].keys()
+    attributes = {
+        key: torch.tensor([float(item[1][key]) for item in batch], dtype=torch.float32) for key in attribute_keys
+    }
+    return images, attributes
+
+
+def _load_attribute_json(attribute_file: str) -> dict[str, dict[str, float]]:
+    """Load attribute JSON mapping filenames to attribute dictionaries.
+
+    Args:
+        attribute_file: Path to a JSON file.
+
+    Returns:
+        Mapping of filename to {attribute_name: value}.
+
+    Raises:
+        FileNotFoundError: If the JSON file is missing.
+        ValueError: If the JSON cannot be parsed.
+    """
+    if not os.path.exists(attribute_file):
+        raise FileNotFoundError(f"Attribute file not found: {attribute_file}")
+
+    try:
+        with open(attribute_file, encoding="utf-8") as file:
+            return json.load(file)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid attribute JSON: {attribute_file}") from exc
+
+
+def _select_attribute_sources(attribute_file: str | dict[str, str], data_source: str) -> dict[str, dict[str, float]]:
+    """Select attribute mappings depending on the data source."""
+    if isinstance(attribute_file, str):
+        return {data_source: _load_attribute_json(attribute_file)}
+
+    if isinstance(attribute_file, dict):
+        mappings: dict[str, dict[str, float]] = {}
+        for source, path in attribute_file.items():
+            mappings[source] = _load_attribute_json(path)
+        return mappings
+
+    raise ValueError("regularized_attributes.attribute_file must be a string or mapping from source to file.")
+
+
+def _normalize_attributes(
+    attributes: dict[str, float],
+    normalize_cfg: dict[str, Any] | None,
+) -> dict[str, float]:
+    """Normalize attribute values if requested."""
+    if not normalize_cfg:
+        return attributes
+
+    if not normalize_cfg.get("enabled", False):
+        return attributes
+
+    divisor = float(normalize_cfg.get("divisor", 1.0))
+    if divisor == 0:
+        raise ValueError("Normalization divisor must be non-zero.")
+
+    return {key: float(value) / divisor for key, value in attributes.items()}
+
+
 def _print_dataset_stats(
     train_ds: Dataset,
     val_ds: Dataset,
@@ -122,7 +213,7 @@ def _print_dataset_stats(
         print("Split: External validation directory")
 
     # Sample statistics
-    sample = train_ds[0]
+    sample = train_ds[0][0] if isinstance(train_ds[0], tuple) else train_ds[0]
     print("\nImage properties:")
     print(f"  Shape: {sample.shape}")
     print(f"  Dtype: {sample.dtype}")
@@ -147,6 +238,8 @@ def create_vae_dataloaders(
     cache_rate: float = 0.0,
     distributed: bool = False,
     world_size: int = 1,
+    ar_vae_enabled: bool = False,
+    regularized_attributes: dict[str, Any] | None = None,
     **kwargs,
 ) -> tuple[DataLoader, DataLoader]:
     """Create train and validation dataloaders for VAE training.
@@ -166,6 +259,8 @@ def create_vae_dataloaders(
         cache_rate: Fraction of dataset to cache in RAM, 0.0 to 1.0 (default: 0.0)
         distributed: Use DistributedSampler for DDP training (default: False)
         world_size: Number of processes for DDP (default: 1)
+        ar_vae_enabled: Whether AR-VAE is enabled (default: False)
+        regularized_attributes: Attribute configuration block for AR-VAE
         **kwargs: Additional arguments (for compatibility)
 
     Returns:
@@ -181,7 +276,7 @@ def create_vae_dataloaders(
     if not 0.0 <= cache_rate <= 1.0:
         raise ValueError(f"cache_rate must be in [0, 1], got {cache_rate}")
 
-    # Load images based on data_source
+    # Load images based on data_source and align attributes if requested
     if data_source == "edente":
         data_dir = os.path.join(data_base_dir, "edente")
         tif_paths = sorted(glob(os.path.join(data_dir, "*.tif")))
@@ -206,43 +301,143 @@ def create_vae_dataloaders(
         if rank == 0:
             print(f"⚠️  Using subset of {subset_size} images for debugging")
 
+    attributes_per_image: list[dict[str, float]] | None = None
+    train_attributes: list[dict[str, float]] | None = None
+    val_attributes: list[dict[str, float]] | None = None
+
+    if ar_vae_enabled:
+        if regularized_attributes is None:
+            raise ValueError("AR-VAE enabled but regularized_attributes config is missing.")
+
+        attribute_file_cfg = regularized_attributes.get("attribute_file")
+        raw_mapping = regularized_attributes.get("attribute_latent_mapping", {})
+        attribute_latent_mapping = {k: v for k, v in raw_mapping.items() if not str(k).startswith("_")}
+        if not attribute_latent_mapping:
+            raise ValueError("attribute_latent_mapping must be provided when AR-VAE is enabled.")
+
+        attribute_sources = _select_attribute_sources(attribute_file_cfg, data_source)
+
+        attributes_per_image = []
+        normalize_cfg = regularized_attributes.get("normalize_attributes")
+
+        if data_source == "both":
+            for path in tif_paths:
+                base = os.path.basename(path)
+                if "edente" in path:
+                    source_key = "edente"
+                elif "dente" in path:
+                    source_key = "dente"
+                else:
+                    raise ValueError(f"Cannot identify data source from path: {path}")
+
+                attribute_dict = attribute_sources.get(source_key, {}).get(base)
+                if attribute_dict is None:
+                    raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
+
+                filtered = {
+                    key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict
+                }
+                if len(filtered) != len(attribute_latent_mapping):
+                    missing = set(attribute_latent_mapping).difference(filtered)
+                    raise KeyError(f"Missing attributes for {base}: {missing}")
+
+                filtered = _normalize_attributes(filtered, normalize_cfg)
+                attributes_per_image.append(filtered)
+        else:
+            source_key = data_source
+            mapping = attribute_sources.get(source_key)
+            if mapping is None:
+                raise ValueError(f"No attribute mapping found for source {source_key}")
+
+            for path in tif_paths:
+                base = os.path.basename(path)
+                attribute_dict = mapping.get(base)
+                if attribute_dict is None:
+                    raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
+
+                filtered = {
+                    key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict
+                }
+                if len(filtered) != len(attribute_latent_mapping):
+                    missing = set(attribute_latent_mapping).difference(filtered)
+                    raise KeyError(f"Missing attributes for {base}: {missing}")
+
+                filtered = _normalize_attributes(filtered, normalize_cfg)
+                attributes_per_image.append(filtered)
+
     # Shuffle with seed for reproducibility
     if seed is not None:
         random.seed(seed)
-        tif_paths_copy = tif_paths.copy()
-        random.shuffle(tif_paths_copy)
-        tif_paths = tif_paths_copy
-
-    # Handle validation directory
-    if val_dir is not None:
-        # Use separate validation directory
-        if data_source == "edente":
-            val_data_dir = os.path.join(val_dir, "edente")
-        elif data_source == "dente":
-            val_data_dir = os.path.join(val_dir, "dente")
-        elif data_source == "both":
-            val_dir_edente = os.path.join(val_dir, "edente")
-            val_dir_dente = os.path.join(val_dir, "dente")
-            val_paths_edente = sorted(glob(os.path.join(val_dir_edente, "*.tif")))
-            val_paths_dente = sorted(glob(os.path.join(val_dir_dente, "*.tif")))
-            val_paths = val_paths_edente + val_paths_dente
+        if attributes_per_image is not None:
+            paired = list(zip(tif_paths, attributes_per_image, strict=True))
+            random.shuffle(paired)
+            tif_paths, attributes_per_image = zip(*paired, strict=False)
+            tif_paths = list(tif_paths)
+            attributes_per_image = list(attributes_per_image)
         else:
-            raise ValueError(f"Invalid data_source: {data_source}")
+            tif_paths_copy = tif_paths.copy()
+            random.shuffle(tif_paths_copy)
+            tif_paths = tif_paths_copy
 
-        if data_source != "both":
-            val_paths = sorted(glob(os.path.join(val_data_dir, "*.tif")))
+        # Handle validation directory
+        if val_dir is not None:
+            # Use separate validation directory
+            if data_source == "edente":
+                val_data_dir = os.path.join(val_dir, "edente")
+            elif data_source == "dente":
+                val_data_dir = os.path.join(val_dir, "dente")
+            elif data_source == "both":
+                val_dir_edente = os.path.join(val_dir, "edente")
+                val_dir_dente = os.path.join(val_dir, "dente")
+                val_paths_edente = sorted(glob(os.path.join(val_dir_edente, "*.tif")))
+                val_paths_dente = sorted(glob(os.path.join(val_dir_dente, "*.tif")))
+                val_paths = val_paths_edente + val_paths_dente
+            else:
+                raise ValueError(f"Invalid data_source: {data_source}")
 
-        if len(val_paths) == 0:
-            raise FileNotFoundError(f"Aucune image .tif trouvée dans {val_dir}/{data_source}")
+            if data_source != "both":
+                val_paths = sorted(glob(os.path.join(val_data_dir, "*.tif")))
 
-        train_paths = tif_paths  # Use all data for training
-        if rank == 0:
-            print(f"📁 Using external validation directory: {val_dir}")
-    else:
-        # Standard split
-        split_idx = int(train_split * len(tif_paths))
-        train_paths = tif_paths[:split_idx]
-        val_paths = tif_paths[split_idx:]
+            if len(val_paths) == 0:
+                raise FileNotFoundError(f"Aucune image .tif trouvée dans {val_dir}/{data_source}")
+
+            train_paths = tif_paths  # Use all data for training
+            if attributes_per_image is not None:
+                train_attributes = attributes_per_image
+                val_attributes = []
+                normalize_cfg = regularized_attributes.get("normalize_attributes") if regularized_attributes else None
+                raw_mapping = (
+                    regularized_attributes.get("attribute_latent_mapping", {}) if regularized_attributes else {}
+                )
+                attribute_latent_mapping = {k: v for k, v in raw_mapping.items() if not str(k).startswith("_")}
+
+                for path in val_paths:
+                    base = os.path.basename(path)
+                    source_key = "edente" if "edente" in path else "dente"
+                    mapping = attribute_sources.get(source_key, {})
+                    attribute_dict = mapping.get(base)
+                    if attribute_dict is None:
+                        raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
+
+                    filtered = {
+                        key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict
+                    }
+                    if len(filtered) != len(attribute_latent_mapping):
+                        missing = set(attribute_latent_mapping).difference(filtered)
+                        raise KeyError(f"Missing attributes for {base}: {missing}")
+
+            filtered = _normalize_attributes(filtered, normalize_cfg)
+            val_attributes.append(filtered)
+            if rank == 0:
+                print(f"📁 Using external validation directory: {val_dir}")
+        else:
+            # Standard split
+            split_idx = int(train_split * len(tif_paths))
+            train_paths = tif_paths[:split_idx]
+            val_paths = tif_paths[split_idx:]
+            if attributes_per_image is not None:
+                train_attributes = attributes_per_image[:split_idx]
+                val_attributes = attributes_per_image[split_idx:]
 
     # Handle augmentation
     if augment:
@@ -269,15 +464,27 @@ def create_vae_dataloaders(
     if cache_rate > 0:
         from monai.data import CacheDataset
 
-        train_ds = CacheDataset(data=train_paths, transform=transforms, cache_rate=cache_rate, num_workers=num_workers)
-        val_ds = CacheDataset(data=val_paths, transform=transforms, cache_rate=1.0, num_workers=num_workers)
+        train_base = CacheDataset(
+            data=train_paths, transform=transforms, cache_rate=cache_rate, num_workers=num_workers
+        )
+        val_base = CacheDataset(data=val_paths, transform=transforms, cache_rate=1.0, num_workers=num_workers)
         if rank == 0:
             print(f"🚀 Caching {cache_rate * 100:.0f}% of training data in RAM")
     else:
-        train_ds = Dataset(data=train_paths, transform=transforms)
-        val_ds = Dataset(data=val_paths, transform=transforms)
+        train_base = Dataset(data=train_paths, transform=transforms)
+        val_base = Dataset(data=val_paths, transform=transforms)
+
+    if ar_vae_enabled:
+        if train_attributes is None or val_attributes is None:
+            raise ValueError("Attributes must be available when AR-VAE is enabled.")
+        train_ds = DatasetWithAttributes(train_base, list(train_attributes))
+        val_ds = DatasetWithAttributes(val_base, list(val_attributes))
+    else:
+        train_ds = train_base
+        val_ds = val_base
 
     # Create dataloaders with optional distributed sampling
+    collate_fn = collate_with_attributes if ar_vae_enabled else None
     if distributed:
         from torch.utils.data.distributed import DistributedSampler
 
@@ -289,19 +496,41 @@ def create_vae_dataloaders(
         )
 
         train_loader = DataLoader(
-            train_ds, batch_size=batch_size, sampler=train_sampler, num_workers=num_workers, pin_memory=True
+            train_ds,
+            batch_size=batch_size,
+            sampler=train_sampler,
+            num_workers=num_workers,
+            pin_memory=True,
+            collate_fn=collate_fn,
         )
         val_loader = DataLoader(
-            val_ds, batch_size=batch_size, sampler=val_sampler, num_workers=num_workers, pin_memory=True
+            val_ds,
+            batch_size=batch_size,
+            sampler=val_sampler,
+            num_workers=num_workers,
+            pin_memory=True,
+            collate_fn=collate_fn,
         )
 
         if rank == 0:
             print(f"⚡ Using DistributedSampler for {world_size} GPUs")
     else:
         train_loader = DataLoader(
-            train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True
+            train_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            collate_fn=collate_fn,
         )
-        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        val_loader = DataLoader(
+            val_ds,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+            collate_fn=collate_fn,
+        )
 
     # Print dataset statistics
     if rank == 0:

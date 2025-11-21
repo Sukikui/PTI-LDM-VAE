@@ -197,6 +197,30 @@ loss = recons_loss + kl_weight * kl_loss
 
 - Scalar KL divergence loss averaged over the batch
 
+### AR-VAE Attribute Loss
+
+The `compute_ar_vae_loss` function adds attribute-based ranking regularization on latent vectors.
+
+```python
+from pti_ldm_vae.models import compute_ar_vae_loss
+
+ar_total, losses_per_attr, pair_counts, deltas = compute_ar_vae_loss(
+    latent_vectors=z_mu,                        # [B, C] or [B, C, H, W] (spatial averaged internally)
+    attributes=batch_attributes,               # dict attr -> tensor[B]
+    attribute_latent_mapping=mapping,          # attr -> {latent_dim, delta?}
+    pairwise_mode="all",                       # or "subset"
+    subset_pairs=None,                         # required if pairwise_mode="subset"
+    delta_global={"enabled": True, "value": 1.0},
+)
+# Total loss used in training: loss_total = recon + kl_weight * kl + gamma * ar_total
+```
+
+Key notes:
+
+- Pairwise ordering uses `sign(Δa)`; pairs with equal attributes are ignored.
+- If attribute-level `delta` is absent and `delta_global.enabled` is true, the global delta is used.
+- Raises clear errors on missing attributes or invalid latent dimensions.
+
 ______________________________________________________________________
 
 ## Configuration Reference

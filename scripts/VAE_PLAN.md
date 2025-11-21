@@ -99,9 +99,27 @@ torchrun --nproc_per_node=4 scripts/train_vae.py -c config/vae_edente.json -g 4
 | `dente`  | ~10-12h |
 | `both`   | ~20-24h |
 
+### Variante AR-VAE (régularisation d'attributs)
+
+- Exemple : `config/ar_vae_both.json` (active `regularized_attributes.enabled`, mappe chaque attribut vers une dimension latente, définit `gamma`, `pairwise`, `delta_global`, `subset_pairs`).
+- Attributs pré-calculés : `data/metrics/attributes_edente.json` et `data/metrics/attributes_dente.json`. Avec `data_source="both"`, la config référence les deux (mapping par source).
+- Lancement :
+
+```bash
+python scripts/train_vae.py -c config/ar_vae_both.json
+```
+
+- Pairwise par défaut : `all`. Pour sous-échantillonner, définir `pairwise: "subset"` et `subset_pairs` (entier) dans `regularized_attributes`.
+- Poids de la perte AR : `autoencoder_train.ar_vae_weight` (alias `regularized_attributes.gamma`). Activation via `autoencoder_train.ar_vae_enabled`.
+
 ______________________________________________________________________
 
 ## Options utiles
+
+### Attention (config VAE)
+
+- `attention_levels`: liste de booléens par niveau d’échelle; `true` ajoute des blocs de self-attention à ce niveau (meilleur contexte global, plus de compute/mémoire).
+- `with_encoder_nonlocal_attn` / `with_decoder_nonlocal_attn`: attention “non-local” au bottleneck encodeur/décodeur, même si `attention_levels` est à `false`; apporte du contexte global sans activer l’attention sur tous les niveaux.
 
 ### Performance
 
@@ -151,7 +169,11 @@ WANDB_PROJECT=pti-ldm-vae
 WANDB_ENTITY=votre-username
 ```
 
-Métriques disponibles : `train/recon_loss`, `val/recon_loss`, triplets, etc.
+Métriques disponibles :
+
+- `train/recon_loss`, `train/loss_total`, `train/ar_loss_total` (+ par attribut si AR activé)
+- `val/recon_loss`
+- Visuels : `train/triplets` ; `val/triplet_stepXXX` loggés uniquement toutes les 20 époques (1 triplet)
 
 ### Validation samples
 
@@ -205,25 +227,4 @@ python scripts/analyze_static.py \
   --folder-dente data/dente/ \
   --output-dir results/umap \
   --method umap
-```
-
-______________________________________________________________________
-
-## Résumé rapide
-
-```bash
-# 1. Test rapide
-python scripts/train_vae.py -c config/vae_config.json --subset-size 100 --max-epochs 5
-
-# 2. Créer vae_edente.json, vae_dente.json, vae_both.json (copier/modifier vae_config.json)
-
-# 3. Entraînement complet
-python scripts/train_vae.py -c config/vae_edente.json
-python scripts/train_vae.py -c config/vae_dente.json
-python scripts/train_vae.py -c config/vae_both.json
-
-# 4. Inférence
-python scripts/inference_vae.py \
-  --checkpoint runs/vae_edente/trained_weights/autoencoder_epoch73.pth \
-  --input-dir data/edente/
 ```

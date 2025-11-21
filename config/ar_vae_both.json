@@ -1,12 +1,12 @@
 {
-  "_comment": "VAE Training Configuration - Single unified config file",
+  "_comment": "AR-VAE configuration for edente + dente training",
 
   "data_base_dir": "./data",
-  "run_dir": "./runs/vae_baseline",
+  "run_dir": "./runs/ar_vae_both",
   "resume_ckpt": false,
   "checkpoint_dir": "",
 
-  "data_source": "edente",
+  "data_source": "both",
   "_data_source_comment": "Which images to load: 'edente', 'dente', or 'both'",
 
   "train_split": 0.9,
@@ -19,7 +19,6 @@
   "spatial_dims": 2,
   "image_channels": 1,
   "latent_channels": 4,
-
   "autoencoder_def": {
     "spatial_dims": "@spatial_dims",
     "in_channels": "@image_channels",
@@ -49,6 +48,48 @@
     "_decoder_attn_comment": "Non-local attention in decoder bottleneck. Improves reconstruction quality"
   },
 
+  "regularized_attributes": {
+    "enabled": true,
+    "_comment": "Unified configuration for AR-VAE attribute regularization",
+
+    "attribute_file": {
+      "edente": "./data/metrics/attributes_edente.json",
+      "dente": "./data/metrics/attributes_dente.json"
+    },
+    "_attribute_file_comment": "Per-source JSON containing a_l(x) for each image. For a single source, this can be a single string path.",
+
+    "gamma": 0.5,
+    "_gamma_comment": "Weight of attribute regularization ∑_l L_{r_l,a_l}",
+
+    "delta_global": {
+      "_comment": "Global slope for tanh(delta * Δz). Used only if enabled AND attribute-level delta is disabled.",
+      "enabled": true,
+      "value": 1.0
+    },
+
+    "pairwise": "all",
+    "_pairwise_comment": "Comparison strategy: 'all' = m^2 pairs, 'subset' = random subset for speed",
+
+    "subset_pairs": null,
+    "_subset_pairs_comment": "Number of random pairs when pairwise='subset'. Ignored otherwise.",
+
+    "normalize_attributes": {
+      "_comment": "Optional normalization applied to all attributes",
+      "enabled": false,
+      "divisor": 1.0
+    },
+
+    "attribute_latent_mapping": {
+      "_comment": "Defines which attributes (string keys) supervise which latent dimensions z_r.",
+      "height_0": { "latent_dim": 0, "delta": 1.0 },
+      "width_0": { "latent_dim": 1, "delta": 1.0 },
+      "width_1": { "latent_dim": 2, "delta": 1.0 },
+      "width_2": { "latent_dim": 3, "delta": 1.0 },
+      "width_3": { "latent_dim": 4, "delta": 1.0 },
+      "width_4": { "latent_dim": 5, "delta": 1.0 }
+    }
+  },
+
   "autoencoder_train": {
     "batch_size": 8,
     "patch_size": [256, 256],
@@ -65,6 +106,12 @@
     "recon_loss": "l1",
     "_recon_loss_comment": "Reconstruction loss type: 'l1' = sharper details, 'l2' = smoother results",
 
+    "ar_vae_weight": "@regularized_attributes.gamma",
+    "_ar_vae_weight_comment": "Weight applied to ∑_l L_{r_l,a_l} in total loss",
+
+    "ar_vae_enabled": "@regularized_attributes.enabled",
+    "_ar_vae_enabled_comment": "Enable AR-VAE loss term during training",
+
     "max_epochs": 100,
     "val_interval": 1
   },
@@ -79,13 +126,13 @@
     "entity": null,
     "_entity_comment": "W&B username or team. If null, uses WANDB_ENTITY from .env file",
 
-    "name": null,
-    "_name_comment": "Run name. If null, auto-generated from run_dir (e.g., 'vae_baseline')",
+    "name": "ar_vae_both",
+    "_name_comment": "Run name. If null, auto-generated from run_dir",
 
-    "tags": ["vae", "baseline"],
+    "tags": ["VAE", "both", "5-AR"],
     "_tags_comment": "Tags for organizing runs in W&B UI",
 
-    "notes": "VAE training with standard configuration",
+    "notes": "AR-VAE training with attribute regularization for both modalities",
     "_notes_comment": "Description of this training run"
   }
 }
