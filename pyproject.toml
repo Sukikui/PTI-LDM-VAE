@@ -26,9 +26,7 @@ dependencies = [
     "scipy>=1.16.2",
     "tensorflow>=2.20.0",
     "tifffile>=2025.10.4",
-    "torch>=2.8.0",
     "torchsummary>=1.5.1",
-    "torchvision>=0.23.0",
     "tqdm>=4.67.1",
     "umap>=0.1.1",
     "umap-learn>=0.5.9.post2",
@@ -41,6 +39,70 @@ dev = [
     "docformatter>=1.7.5,<2",
     "ruff>=0.11,<0.12",
 ]
+
+[project.optional-dependencies]
+cpu = [
+  "torch>=2.7,<=2.8",
+  "torchvision>=0.22,<=0.23",  # torchvision is required as an indirect dependency of TotalSegmentator
+]
+cu118 = [
+  "torch>=2.7,<2.8",
+  "torchvision>=0.22,<0.23",  # torchvision is required as an indirect dependency of TotalSegmentator
+]
+cu126 = [
+  "torch>=2.7,<2.8",
+  "torchvision>=0.22,<0.23",  # torchvision is required as an indirect dependency of TotalSegmentator
+]
+cu128 = [
+  "torch>=2.7,<2.8",
+  "torchvision>=0.22,<0.23",  # torchvision is required as an indirect dependency of TotalSegmentator
+]
+
+[tool.uv]
+required-version = ">=0.9,<0.10"
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu118" },
+    { extra = "cu126" },
+    { extra = "cu128" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cu118" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cu128", extra = "cu128" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cu118" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cu128", extra = "cu128" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
 
 [build-system]
 requires = ["uv_build>=0.8,<0.9"]
