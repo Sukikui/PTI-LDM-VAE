@@ -94,6 +94,9 @@ analyzer.plot_projection_2d(
 - `load_image_paths()` - Load image paths from directory
 - `extract_patient_id_from_filename()` - Parse patient IDs from filenames
 - `compute_distance_metrics()` - Compute distance between point clouds
+- `latent_distance()` - Euclidean distance between two latent vectors
+- `latent_distance_from_indices()` - Distance using indices within a latent matrix
+- `latent_distance_cross()` - Distance between vectors in two latent matrices (cross-group)
 
 ## Usage Examples
 

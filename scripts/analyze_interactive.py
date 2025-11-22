@@ -15,11 +15,11 @@ from analysis_common import (
     setup_device_and_output,
 )
 from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from PIL import Image
 from sklearn.decomposition import PCA
 
-from pti_ldm_vae.analysis import LatentSpaceAnalyzer
+from pti_ldm_vae.analysis import LatentSpaceAnalyzer, latent_distance, latent_distance_cross
 
 
 def parse_args() -> argparse.Namespace:
@@ -466,6 +466,15 @@ def main() -> None:
             style={"marginBottom": "20px", "padding": "10px", "backgroundColor": "#f9f9f9", "borderRadius": "5px"},
         )
 
+    initial_figure = create_figure(
+        projections,
+        image_paths_list,
+        patient_to_id,
+        patient_to_color,
+        args.color_by_patient,
+        title,
+    )
+
     app.layout = html.Div(
         [
             # Hidden divs to store data
@@ -484,6 +493,8 @@ def main() -> None:
                     "seed": args.seed,
                 },
             ),
+            dcc.Store(id="base-figure", data=initial_figure.to_dict()),
+            dcc.Store(id="selection-store", data=None),
             html.Div(
                 [
                     # Left: Plot
@@ -491,14 +502,7 @@ def main() -> None:
                         [
                             dcc.Graph(
                                 id="latent-plot",
-                                figure=create_figure(
-                                    projections,
-                                    image_paths_list,
-                                    patient_to_id,
-                                    patient_to_color,
-                                    args.color_by_patient,
-                                    title,
-                                ),
+                                figure=initial_figure,
                                 style={"height": "100%", "width": "100%"},
                             )
                         ],
@@ -522,6 +526,18 @@ def main() -> None:
                                 id="image-container",
                                 style={"textAlign": "center", "padding": "20px"},
                             ),
+                            html.Div(
+                                id="distance-info",
+                                style={
+                                    "textAlign": "center",
+                                    "marginTop": "10px",
+                                    "fontSize": "13px",
+                                    "color": "#444",
+                                    "padding": "5px",
+                                    "border": "1px solid #eee",
+                                    "borderRadius": "4px",
+                                },
+                            ),
                         ],
                         style={
                             "flex": "1",  # Takes 1/5 of the space
@@ -542,20 +558,19 @@ def main() -> None:
         },
     )
 
-    # Callback to automatically recalculate projection when parameters change
+    # Figure update with optional selection overlay
     if args.method == "umap":
 
         @app.callback(
-            Output("latent-plot", "figure"),
+            Output("base-figure", "data"),
             [Input("n-neighbors-slider", "value"), Input("min-dist-slider", "value")],
         )
-        def update_projection(n_neighbors_val, min_dist_val):
+        def update_base_figure_umap(n_neighbors_val, min_dist_val):
             print("\n" + "=" * 60)
             print("Recalculating UMAP projection...")
             print(f"n_neighbors: {n_neighbors_val}, min_dist: {min_dist_val}")
             print("=" * 60)
 
-            # Recompute PCA and UMAP with new parameters
             pca = PCA(n_components=50, random_state=args.seed)
             latent_edente_pca = pca.fit_transform(latent_edente)
 
@@ -576,9 +591,7 @@ def main() -> None:
                 new_projections.append((new_proj_dente, ids_dente, "o", "dente"))
                 new_image_paths_list.append(paths_dente)
 
-            print("✅ UMAP recalculated")
-
-            return create_figure(
+            fig = create_figure(
                 new_projections,
                 new_image_paths_list,
                 patient_to_id,
@@ -586,13 +599,14 @@ def main() -> None:
                 args.color_by_patient,
                 title,
             )
-    else:  # tsne
+            return fig.to_dict()
+    else:
 
         @app.callback(
-            Output("latent-plot", "figure"),
+            Output("base-figure", "data"),
             [Input("perplexity-slider", "value")],
         )
-        def update_projection(perplexity_val):
+        def update_base_figure_tsne(perplexity_val):
             print("\n" + "=" * 60)
             print("Recalculating t-SNE projection...")
             print(f"perplexity: {perplexity_val}")
@@ -614,9 +628,7 @@ def main() -> None:
                 new_projections.append((new_proj_dente, ids_dente, "o", "dente"))
                 new_image_paths_list.append(paths_dente)
 
-            print("✅ t-SNE recalculated")
-
-            return create_figure(
+            fig = create_figure(
                 new_projections,
                 new_image_paths_list,
                 patient_to_id,
@@ -624,35 +636,62 @@ def main() -> None:
                 args.color_by_patient,
                 title,
             )
+            return fig.to_dict()
 
     @app.callback(
-        [Output("image-container", "children"), Output("image-info", "children")],
-        [Input("latent-plot", "clickData")],
+        Output("latent-plot", "figure"),
+        [Input("base-figure", "data"), Input("selection-store", "data")],
     )
-    def display_click_image(clickData):
+    def overlay_selection(base_fig_data, selection_data):
+        if base_fig_data is None:
+            return go.Figure()
+        fig = go.Figure(base_fig_data)
+        if selection_data and selection_data.get("points") and len(selection_data["points"]) == 2:
+            p1, p2 = selection_data["points"]
+            fig.add_trace(
+                go.Scatter(
+                    x=[p1["x"], p2["x"]],
+                    y=[p1["y"], p2["y"]],
+                    mode="lines",
+                    line={"color": "#888", "width": 1},
+                    name="selected-pair",
+                    showlegend=False,
+                )
+            )
+        return fig
+
+    @app.callback(
+        [
+            Output("image-container", "children"),
+            Output("image-info", "children"),
+            Output("selection-store", "data"),
+            Output("distance-info", "children"),
+        ],
+        [Input("latent-plot", "clickData")],
+        [State("selection-store", "data")],
+    )
+    def display_click_image(clickData, selection_data):
         if clickData is None:
-            return html.Div("Click on a point to view the image"), ""
+            return html.Div("Click on a point to view the image"), "", selection_data, ""
 
         try:
-            # Get customdata from clicked point
             point = clickData["points"][0]
             customdata = point.get("customdata", {})
 
             if not customdata or not customdata.get("path"):
-                return html.Div("No image path available"), ""
+                return html.Div("No image path available"), "", selection_data, ""
 
             image_path = customdata["path"]
             patient = customdata.get("patient", "Unknown")
             group = customdata.get("group", "Unknown")
-            index = customdata.get("index", "?")
+            index = int(customdata.get("index", -1))
+            x_coord = float(point.get("x"))
+            y_coord = float(point.get("y"))
 
-            # Load and encode image
             img_src = load_image_as_base64(image_path)
-
             if not img_src:
-                return html.Div(f"Error loading image: {image_path}"), ""
+                return html.Div(f"Error loading image: {image_path}"), "", selection_data, ""
 
-            # Image info
             info = html.Div(
                 [
                     html.P(f"Patient: {patient}", style={"margin": "5px"}),
@@ -665,7 +704,6 @@ def main() -> None:
                 ]
             )
 
-            # Image display
             image_div = html.Img(
                 src=img_src,
                 style={
@@ -676,10 +714,126 @@ def main() -> None:
                 },
             )
 
-            return image_div, info
+            # Update selection
+            new_point = {
+                "group": group,
+                "index": index,
+                "x": x_coord,
+                "y": y_coord,
+                "patient": patient,
+                "path": image_path,
+            }
+            points = []
+            if selection_data and selection_data.get("points"):
+                points = selection_data["points"]
+            if len(points) == 0:
+                points = [new_point]
+                return image_div, info, {"points": points}, ""
+            if len(points) == 1:
+                points.append(new_point)
+            else:
+                points = [new_point]
+                return image_div, info, {"points": points}, ""
+
+            # Compute distance when two points selected
+            p1, p2 = points
+            distance_val = None
+            projection_distance = None
+            try:
+                if p1["group"] == "edente":
+                    lat1 = latent_edente[p1["index"]]
+                else:
+                    lat1 = latent_dente[p1["index"]] if latent_dente is not None else None
+                if p2["group"] == "edente":
+                    lat2 = latent_edente[p2["index"]]
+                else:
+                    lat2 = latent_dente[p2["index"]] if latent_dente is not None else None
+                if lat1 is None or lat2 is None:
+                    distance_val = None
+                elif p1["group"] == p2["group"]:
+                    distance_val = latent_distance(lat1, lat2)
+                else:
+                    distance_val = latent_distance_cross(
+                        latent_edente if p1["group"] == "edente" else latent_dente,
+                        p1["index"],
+                        latent_dente if p1["group"] == "edente" else latent_edente,
+                        p2["index"],
+                    )
+            except Exception as exc:  # pylint: disable=broad-except
+                distance_val = None
+                print(f"[WARN] Failed to compute latent distance: {exc}")
+
+            try:
+                projection_distance = float(np.linalg.norm(np.array([p1["x"], p1["y"]]) - np.array([p2["x"], p2["y"]])))
+            except Exception as exc:  # pylint: disable=broad-except
+                projection_distance = None
+                print(f"[WARN] Failed to compute projection distance: {exc}")
+
+            if distance_val is None:
+                distance_block = html.Div("Distance non disponible")
+            else:
+                group_pair = (
+                    f"{p1['group']} ↔ {p2['group']}" if p1["group"] != p2["group"] else f"{p1['group']} (intra)"
+                )
+                distance_block = html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.P(
+                                    f"Distance latente: {distance_val:.4f}",
+                                    style={"margin": "4px 0", "fontWeight": "bold"},
+                                ),
+                                html.P(
+                                    f"Distance projection (2D): {projection_distance:.4f}"
+                                    if projection_distance is not None
+                                    else "Distance projection (2D): n/a",
+                                    style={"margin": "3px 0"},
+                                ),
+                                html.P(group_pair, style={"margin": "3px 0", "color": "#666"}),
+                            ],
+                            style={"marginBottom": "6px"},
+                        ),
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        html.P("P1", style={"margin": "2px 0", "fontWeight": "bold"}),
+                                        html.P(f"Groupe: {p1['group']}", style={"margin": "2px 0"}),
+                                        html.P(f"Patient: {p1['patient']}", style={"margin": "2px 0"}),
+                                        html.P(f"Index: {p1['index']}", style={"margin": "2px 0"}),
+                                    ],
+                                    style={
+                                        "flex": "1",
+                                        "padding": "6px",
+                                        "backgroundColor": "#f9f9f9",
+                                        "borderRadius": "4px",
+                                        "marginRight": "6px",
+                                    },
+                                ),
+                                html.Div(
+                                    [
+                                        html.P("P2", style={"margin": "2px 0", "fontWeight": "bold"}),
+                                        html.P(f"Groupe: {p2['group']}", style={"margin": "2px 0"}),
+                                        html.P(f"Patient: {p2['patient']}", style={"margin": "2px 0"}),
+                                        html.P(f"Index: {p2['index']}", style={"margin": "2px 0"}),
+                                    ],
+                                    style={
+                                        "flex": "1",
+                                        "padding": "6px",
+                                        "backgroundColor": "#f9f9f9",
+                                        "borderRadius": "4px",
+                                    },
+                                ),
+                            ],
+                            style={"display": "flex", "flexDirection": "row"},
+                        ),
+                    ]
+                )
+
+            return image_div, info, {"points": points}, distance_block
 
         except Exception as e:
-            return html.Div(f"Error: {e!s}"), ""
+            return html.Div(f"Error: {e!s}"), "", selection_data, ""
 
     # Run server
     print("\n" + "=" * 60)

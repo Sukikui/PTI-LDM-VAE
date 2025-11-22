@@ -4,15 +4,15 @@ Training, inference, and analysis scripts for the PTI-LDM-VAE project.
 
 ## Quick Reference
 
-| Script                    | Purpose                                     |
-| ------------------------- | ------------------------------------------- |
-| `train_vae.py`            | Train a Variational Autoencoder             |
-| `train_ldm.py`            | Train a conditional Latent Diffusion Model  |
-| `inference_vae.py`        | Run VAE inference on images                 |
-| `inference_ldm.py`        | Generate images with trained LDM            |
-| `analyze_static.py`       | Generate static latent space visualizations |
-| `analyze_interactive.py`  | Interactive latent space exploration        |
-| `compute_mask_metrics.py` | Measure edente/dente mask widths/heights    |
+| Script                    | Purpose                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `train_vae.py`            | Train a Variational Autoencoder                                                 |
+| `train_ldm.py`            | Train a conditional Latent Diffusion Model                                      |
+| `inference_vae.py`        | Run VAE inference on images                                                     |
+| `inference_ldm.py`        | Generate images with trained LDM                                                |
+| `analyze_static.py`       | Generate static latent space visualizations                                     |
+| `analyze_interactive.py`  | Interactive latent space exploration (UMAP/t-SNE, clic image, distance latente) |
+| `compute_mask_metrics.py` | Measure edente/dente mask widths/heights                                        |
 
 ______________________________________________________________________
 
