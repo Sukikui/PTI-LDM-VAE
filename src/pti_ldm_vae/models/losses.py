@@ -31,7 +31,7 @@ def compute_ar_vae_loss(
     Args:
         latent_vectors: Latent tensor of shape [B, C] or [B, C, H, W].
         attributes: Mapping attribute name -> tensor of shape [B].
-        attribute_latent_mapping: Config mapping with latent_dim and optional delta.
+        attribute_latent_mapping: Config mapping with latent_channel and optional delta.
         pairwise_mode: "all" or "subset".
         subset_pairs: Number of pairs to sample if pairwise_mode == "subset".
         delta_global: Optional global delta config with keys enabled/value.
@@ -61,9 +61,11 @@ def compute_ar_vae_loss(
     deltas_per_attr: dict[str, float] = {}
 
     for attr_name, mapping in attribute_latent_mapping.items():
-        target_latent = int(mapping["latent_dim"])
+        target_latent = int(mapping["latent_channel"])
         if target_latent >= latent_dim:
-            raise ValueError(f"Latent dim {target_latent} for attribute {attr_name} exceeds latent size {latent_dim}")
+            raise ValueError(
+                f"Latent channel {target_latent} for attribute {attr_name} exceeds latent size {latent_dim}"
+            )
 
         attr_values = attributes.get(attr_name)
         if attr_values is None:

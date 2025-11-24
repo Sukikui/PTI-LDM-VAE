@@ -18,7 +18,7 @@
   "augment": false,
   "spatial_dims": 2,
   "image_channels": 1,
-  "latent_channels": 4,
+  "latent_channels": 10,
 
   "autoencoder_def": {
     "spatial_dims": "@spatial_dims",
@@ -53,7 +53,7 @@
     "enabled": true,
     "_comment": "Unified configuration for AR-VAE attribute regularization",
 
-    "attribute_file": "./data/metrics/attributes_dente.json",
+    "attribute_file": "./data/metrics/attributes_edente.json",
     "_attribute_file_comment": "JSON containing a_l(x) for each image in the dente dataset",
 
     "gamma": 0.5,
@@ -78,11 +78,13 @@
     },
 
     "attribute_latent_mapping": {
-      "_comment": "Defines which attributes (string keys) supervise which latent dimensions z_r.",
-      "height_0": { "latent_dim": 0, "delta": 1.0 },
-      "width_0": { "latent_dim": 1, "delta": 1.0 },
-      "width_1": { "latent_dim": 2, "delta": 1.0 },
-      "width_2": { "latent_dim": 3, "delta": 1.0 }
+      "_comment": "Defines which attributes (string keys) supervise which latent channel.",
+      "height_0": { "latent_channel": 0, "delta": 1.0 },
+      "width_0": { "latent_channel": 1, "delta": 1.0 },
+      "width_1": { "latent_channel": 2, "delta": 1.0 },
+      "width_2": { "latent_channel": 3, "delta": 1.0 },
+      "width_3": { "latent_channel": 4, "delta": 1.0 },
+      "width_4": { "latent_channel": 5, "delta": 1.0 }
     }
   },
 

@@ -207,7 +207,7 @@ from pti_ldm_vae.models import compute_ar_vae_loss
 ar_total, losses_per_attr, pair_counts, deltas = compute_ar_vae_loss(
     latent_vectors=z_mu,                        # [B, C] or [B, C, H, W] (spatial averaged internally)
     attributes=batch_attributes,               # dict attr -> tensor[B]
-    attribute_latent_mapping=mapping,          # attr -> {latent_dim, delta?}
+    attribute_latent_mapping=mapping,          # attr -> {latent_channel, delta?}
     pairwise_mode="all",                       # or "subset"
     subset_pairs=None,                         # required if pairwise_mode="subset"
     delta_global={"enabled": True, "value": 1.0},

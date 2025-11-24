@@ -80,13 +80,13 @@
     },
 
     "attribute_latent_mapping": {
-      "_comment": "Defines which attributes (string keys) supervise which latent dimensions z_r.",
-      "height_0": { "latent_dim": 0, "delta": 1.0 },
-      "width_0": { "latent_dim": 1, "delta": 1.0 },
-      "width_1": { "latent_dim": 2, "delta": 1.0 },
-      "width_2": { "latent_dim": 3, "delta": 1.0 },
-      "width_3": { "latent_dim": 4, "delta": 1.0 },
-      "width_4": { "latent_dim": 5, "delta": 1.0 }
+      "_comment": "Defines which attributes (string keys) supervise which latent channel.",
+      "height_0": { "latent_channel": 0, "delta": 1.0 },
+      "width_0": { "latent_channel": 1, "delta": 1.0 },
+      "width_1": { "latent_channel": 2, "delta": 1.0 },
+      "width_2": { "latent_channel": 3, "delta": 1.0 },
+      "width_3": { "latent_channel": 4, "delta": 1.0 },
+      "width_4": { "latent_channel": 5, "delta": 1.0 }
     }
   },
 

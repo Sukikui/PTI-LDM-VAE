@@ -357,6 +357,10 @@ def train_epoch(
             total_step += 1
             log_payload = {
                 "train/recon_loss": recons_loss.item(),
+                "train/kl_loss": kl_loss.item(),
+                "train/perceptual_loss": p_loss.item(),
+                "train/adv_gen_loss": (adv_weight * generator_loss).item() if epoch > 5 else 0.0,
+                "train/adv_disc_loss": (adv_weight * discriminator_loss).item() if epoch > 5 else 0.0,
                 "train/step": total_step,
                 "train/loss_total": loss_g.item(),
             }
@@ -364,10 +368,6 @@ def train_epoch(
                 log_payload["train/ar_loss_total"] = ar_loss.item()
                 for attr_name, loss_attr in ar_losses_per_attr.items():
                     log_payload[f"train/ar_loss_{attr_name}"] = loss_attr.item()
-                for attr_name, count in ar_pairs.items():
-                    log_payload[f"train/ar_pairs_{attr_name}"] = count
-                for attr_name, delta_attr in ar_deltas.items():
-                    log_payload[f"train/ar_delta_{attr_name}"] = delta_attr
 
             wandb.log(log_payload, step=total_step)
 
@@ -382,7 +382,10 @@ def train_epoch(
                     diff_disp = torch.rot90(normalize_batch_for_display(diff), k=3, dims=[2, 3])[0]
 
                     triplet = torch.cat([img_disp, recon_disp, diff_disp], dim=2)
-                    wandb.log({"train/triplets": wandb.Image(triplet.permute(1, 2, 0).numpy())}, step=total_step)
+                    wandb.log(
+                        {"train/triplets": [wandb.Image(triplet.permute(1, 2, 0).numpy(), caption="train_step_0")]},
+                        step=total_step,
+                    )
 
     return total_step
 
@@ -391,19 +394,34 @@ def validate(
     epoch,
     val_loader,
     autoencoder,
+    discriminator,
     intensity_loss,
     loss_perceptual,
     perceptual_weight,
+    adv_loss,
+    adv_weight,
     args,
     device,
     rank,
     ddp_bool,
     use_wandb,
     log_triplet_every,
+    ar_vae_enabled,
+    regularized_attributes,
+    pairwise_mode,
+    subset_pairs,
 ):
     """Run validation."""
     autoencoder.eval()
+    if discriminator is not None:
+        discriminator.eval()
     val_recon_epoch_loss = 0
+    val_kl_epoch_loss = 0
+    val_perc_epoch_loss = 0
+    val_adv_gen_epoch_loss = 0
+    val_adv_disc_epoch_loss = 0
+    val_ar_epoch_loss = 0
+    val_ar_losses_per_attr: dict[str, float] = {}
     triplets = []
     max_triplets_to_log = 1
 
@@ -423,20 +441,63 @@ def validate(
         dir_diff.mkdir(parents=True, exist_ok=True)
 
     for step, batch in enumerate(val_loader):
+        images: torch.Tensor
+        batch_attributes: dict[str, torch.Tensor] | None = None
         if isinstance(batch, tuple):
-            images = batch[0].to(device)
+            images, batch_attributes = batch
         else:
-            images = batch.to(device)
+            images = batch
+
+        images = images.to(device)
+        if batch_attributes is not None:
+            batch_attributes = {k: v.to(device) for k, v in batch_attributes.items()}
+        elif ar_vae_enabled:
+            raise ValueError("AR-VAE is enabled but attributes are missing from the validation batch.")
 
         with torch.no_grad():
             reconstruction, z_mu, z_sigma = autoencoder(images)
             recon_rgb = ensure_three_channels(reconstruction.float())
             images_rgb = ensure_three_channels(images.float())
-            recons_loss = intensity_loss(reconstruction.float(), images.float()) + perceptual_weight * loss_perceptual(
-                recon_rgb, images_rgb
-            )
+            p_loss = loss_perceptual(recon_rgb, images_rgb)
+            recons_loss = intensity_loss(reconstruction.float(), images.float()) + perceptual_weight * p_loss
+            kl_loss = compute_kl_loss(z_mu, z_sigma)
+
+            adv_gen_loss = torch.tensor(0.0, device=device)
+            adv_disc_loss = torch.tensor(0.0, device=device)
+            if discriminator is not None and epoch > 5:
+                logits_fake = discriminator(reconstruction.contiguous().float())[-1]
+                adv_gen_loss = adv_loss(logits_fake, target_is_real=True, for_discriminator=False)
+                logits_fake_detached = discriminator(reconstruction.contiguous().detach())[-1]
+                loss_d_fake = adv_loss(logits_fake_detached, target_is_real=False, for_discriminator=True)
+                logits_real = discriminator(images.contiguous().detach())[-1]
+                loss_d_real = adv_loss(logits_real, target_is_real=True, for_discriminator=True)
+                adv_disc_loss = (loss_d_fake + loss_d_real) * 0.5
+
+            ar_loss = torch.tensor(0.0, device=device)
+            ar_losses_per_attr: dict[str, torch.Tensor] = {}
+            if ar_vae_enabled:
+                raw_mapping = (
+                    regularized_attributes.get("attribute_latent_mapping", {}) if regularized_attributes else {}
+                )
+                attribute_latent_mapping = {k: v for k, v in raw_mapping.items() if not str(k).startswith("_")}
+                delta_global = regularized_attributes.get("delta_global", {}) if regularized_attributes else {}
+                ar_loss, ar_losses_per_attr, _, _ = compute_ar_vae_loss(
+                    latent_vectors=z_mu,
+                    attributes=batch_attributes if batch_attributes is not None else {},
+                    attribute_latent_mapping=attribute_latent_mapping,
+                    pairwise_mode=pairwise_mode,
+                    subset_pairs=subset_pairs,
+                    delta_global=delta_global,
+                )
 
         val_recon_epoch_loss += recons_loss.item()
+        val_kl_epoch_loss += kl_loss.item()
+        val_perc_epoch_loss += p_loss.item()
+        val_adv_gen_epoch_loss += (adv_weight * adv_gen_loss).item()
+        val_adv_disc_epoch_loss += (adv_weight * adv_disc_loss).item()
+        val_ar_epoch_loss += ar_loss.item()
+        for attr_name, loss_attr in ar_losses_per_attr.items():
+            val_ar_losses_per_attr[attr_name] = val_ar_losses_per_attr.get(attr_name, 0.0) + loss_attr.item()
 
         if rank == 0:
             img = images[0].squeeze().detach().cpu()
@@ -457,12 +518,32 @@ def validate(
                 triplets.append((step, triplet))
 
     val_recon_epoch_loss = val_recon_epoch_loss / (step + 1)
+    val_kl_epoch_loss = val_kl_epoch_loss / (step + 1)
+    val_perc_epoch_loss = val_perc_epoch_loss / (step + 1)
+    val_adv_gen_epoch_loss = val_adv_gen_epoch_loss / (step + 1)
+    val_adv_disc_epoch_loss = val_adv_disc_epoch_loss / (step + 1)
+    val_ar_epoch_loss = val_ar_epoch_loss / (step + 1)
+    val_ar_losses_per_attr = {k: v / (step + 1) for k, v in val_ar_losses_per_attr.items()}
 
     if rank == 0 and use_wandb:
-        log_dict = {"val/recon_loss": val_recon_epoch_loss, "epoch": epoch}
+        log_dict = {
+            "val/recon_loss": val_recon_epoch_loss,
+            "val/kl_loss": val_kl_epoch_loss,
+            "val/perceptual_loss": val_perc_epoch_loss,
+            "val/adv_gen_loss": val_adv_gen_epoch_loss,
+            "val/adv_disc_loss": val_adv_disc_epoch_loss,
+            "val/ar_loss_total": val_ar_epoch_loss,
+            "epoch": epoch,
+        }
+        for attr_name, loss_attr in val_ar_losses_per_attr.items():
+            log_dict[f"val/ar_loss_{attr_name}"] = loss_attr
         if epoch % log_triplet_every == 0:
-            for step_idx, triplet in triplets:
-                log_dict[f"val/triplet_step{step_idx:03}"] = wandb.Image(triplet.permute(1, 2, 0).numpy())
+            images = [
+                wandb.Image(triplet.permute(1, 2, 0).numpy(), caption=f"step{step_idx:03}")
+                for step_idx, triplet in triplets
+            ]
+            if images:
+                log_dict["val/triplets"] = images
         wandb.log(log_dict)
 
     return val_recon_epoch_loss
@@ -690,15 +771,22 @@ def main() -> None:
                 epoch,
                 val_loader,
                 autoencoder,
+                discriminator,
                 intensity_loss,
                 loss_perceptual,
                 perceptual_weight,
+                adv_loss,
+                adv_weight,
                 args,
                 device,
                 rank,
                 ddp_bool,
                 use_wandb,
                 log_triplet_every,
+                ar_vae_enabled,
+                regularized_attributes,
+                pairwise_mode,
+                subset_pairs,
             )
 
             if rank == 0:
