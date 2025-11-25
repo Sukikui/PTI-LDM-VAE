@@ -125,7 +125,7 @@
     "name": "ar_vae_edente",
     "_name_comment": "Run name. If null, auto-generated from run_dir",
 
-    "tags": ["VAE", "edente", "5-AR"],
+    "tags": ["VAE", "edente", "6-AR"],
     "_tags_comment": "Tags for organizing runs in W&B UI",
 
     "notes": "AR-VAE training with attribute regularization on edente dataset",
