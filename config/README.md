@@ -1,6 +1,6 @@
 # VAE Configuration Parameters Explained
 
-This document explains the parameters in `vae_config.json`.
+This document explains the parameters in VAE config files (e.g., `ar_vae_edente.json`, `ar_vae_dente.json`, `ar_vae_both.json`).
 
 ______________________________________________________________________
 

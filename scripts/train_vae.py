@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 import sys
@@ -36,7 +37,7 @@ def parse_args():
     parser.add_argument(
         "-c",
         "--config-file",
-        default="./config/vae_config.json",
+        default="./config/ar_vae_edente.json",
         help="Path to unified JSON configuration file",
     )
 
@@ -356,7 +357,7 @@ def train_epoch(
         if rank == 0 and use_wandb:
             total_step += 1
             log_payload = {
-                "train/recon_loss": recons_loss.item(),
+                "train/recon_loss": intensity_loss(reconstruction, images).item(),
                 "train/kl_loss": kl_loss.item(),
                 "train/perceptual_loss": p_loss.item(),
                 "train/adv_gen_loss": (adv_weight * generator_loss).item() if epoch > 5 else 0.0,
@@ -527,7 +528,7 @@ def validate(
 
     if rank == 0 and use_wandb:
         log_dict = {
-            "val/recon_loss": val_recon_epoch_loss,
+            "val/recon_loss": val_recon_epoch_loss - perceptual_weight * val_perc_epoch_loss,  # intensity only
             "val/kl_loss": val_kl_epoch_loss,
             "val/perceptual_loss": val_perc_epoch_loss,
             "val/adv_gen_loss": val_adv_gen_epoch_loss,
@@ -672,11 +673,13 @@ def main() -> None:
                 f"  2. Set 'resume_ckpt: true' to continue training"
             )
         Path(args.model_dir).mkdir(parents=True, exist_ok=True)
+        splits_dir = run_dir / "splits"
+        splits_dir.mkdir(parents=True, exist_ok=True)
 
     set_determinism(args.seed)
 
     # Create dataloaders with new parameters
-    train_loader, val_loader = create_vae_dataloaders(
+    train_loader, val_loader, train_paths, val_paths = create_vae_dataloaders(
         data_base_dir=args.data_base_dir,
         batch_size=args.autoencoder_train["batch_size"],
         patch_size=tuple(args.autoencoder_train["patch_size"]),
@@ -694,6 +697,21 @@ def main() -> None:
         ar_vae_enabled=ar_vae_enabled,
         regularized_attributes=regularized_attributes,
     )
+
+    # Persist split files (rank 0 only)
+    if rank == 0:
+        split_payload = {
+            "seed": args.seed,
+            "train_split": args.train_split,
+            "subset_size": args.subset_size,
+            "val_dir": args.val_dir,
+            "train_files": list(train_paths),
+            "val_files": list(val_paths),
+        }
+        split_path = Path(args.run_dir) / "splits" / "vae_split.json"
+        with open(split_path, "w", encoding="utf-8") as split_file:
+            json.dump(split_payload, split_file, indent=2)
+        print(f"[INFO] Saved train/val split to {split_path}")
 
     # Create models
     autoencoder, discriminator = create_models(args, device, ddp_bool, rank)

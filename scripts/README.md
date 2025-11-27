@@ -25,14 +25,14 @@ Train a VAE for image reconstruction.
 **Basic usage:**
 
 ```bash
-python scripts/train_vae.py -c config/vae_config.json
+python scripts/train_vae.py -c config/ar_vae_edente.json
 ```
 
 **With overrides:**
 
 ```bash
 python scripts/train_vae.py \
-  -c config/vae_config.json \
+  -c config/ar_vae_edente.json \
   --batch-size 16 \
   --lr 5e-5 \
   --max-epochs 50
@@ -42,13 +42,13 @@ python scripts/train_vae.py \
 
 ```bash
 torchrun --nproc_per_node=4 scripts/train_vae.py \
-  -c config/vae_config.json \
+  -c config/ar_vae_edente.json \
   -g 4
 ```
 
 **Arguments:**
 
-- `-c, --config-file`: Path to unified config file (default: `./config/vae_config.json`)
+- `-c, --config-file`: Path to unified config file (default: `./config/ar_vae_edente.json`)
 - `-g, --gpus`: Number of GPUs (default: 1)
 - `--batch-size`: Override batch size from config
 - `--lr`: Override learning rate from config
@@ -110,6 +110,7 @@ Run inference on images using a trained VAE.
 
 ```bash
 python scripts/inference_vae.py \
+  --config-file config/ar_vae_edente.json \
   --checkpoint path/to/checkpoint_epoch73.pth \
   --input-dir path/to/images/ \
   --output-dir inference_results/ \
@@ -119,10 +120,11 @@ python scripts/inference_vae.py \
 
 **Arguments:**
 
-- `-c, --config-file`: Path to config JSON (default: `./config/config_train_16g_cond.json`)
+- `-c, --config-file`: Path to config JSON (required)
 - `--checkpoint`: Path to VAE checkpoint (required)
 - `--input-dir`: Directory with input TIF images (required)
-- `--output-dir`: Output directory (default: auto-generated)
+- `--output-dir`: Output directory (default: `inference_vae_<checkpoint_name>`)
+- `--num-workers`: Dataloader workers (default: 4)
 - `--num-samples`: Number of samples to process (default: all)
 - `--batch-size`: Batch size (default: 8)
 
@@ -130,6 +132,7 @@ python scripts/inference_vae.py \
 
 - `results_tif/` - Raw TIF files (original | reconstruction)
 - `results_png/` - PNG files normalized for visualization
+- `splits/vae_split.json` - Train/val file lists for this run (seed, split ratio, subset, val_dir)
 
 ______________________________________________________________________
 
@@ -211,7 +214,7 @@ Generate static high-resolution latent space visualizations (UMAP or t-SNE).
 ```bash
 python scripts/analyze_static.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
-  --config-file config/vae_config.json \
+  --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
   --folder-dente data/dente/ \
   --output-dir results/umap_analysis \
@@ -224,7 +227,7 @@ python scripts/analyze_static.py \
 ```bash
 python scripts/analyze_static.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
-  --config-file config/vae_config.json \
+  --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
   --folder-dente data/dente/ \
   --output-dir results/tsne_analysis \
@@ -269,7 +272,7 @@ Interactive latent space exploration with web server and image viewer.
 ```bash
 python scripts/analyze_interactive.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
-  --config-file config/vae_config.json \
+  --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
   --folder-dente data/dente/ \
   --method tsne \
@@ -317,7 +320,7 @@ ______________________________________________________________________
 ### 1. Train VAE
 
 ```bash
-python scripts/train_vae.py -c config/vae_config.json
+python scripts/train_vae.py -c config/ar_vae_edente.json
 ```
 
 ### 2. Test VAE Inference
@@ -329,12 +332,25 @@ python scripts/inference_vae.py \
   --num-samples 10
 ```
 
+### 3. Evaluate VAE Metrics (PSNR/SSIM)
+
+```bash
+python scripts/evaluate_vae.py \
+  --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
+  --config-file config/ar_vae_edente.json \
+  --input-dir data/edente/ \
+  --batch-size 8
+```
+
+Outputs: `evals/<config_name>/metrics.json` with mean/std for intensity recon loss, KL, perceptual, total loss, PSNR, SSIM, plus the list of evaluated files.
+Option: `--num-workers` to control dataloader workers (default: 4).
+
 ### 3. Visualize Latent Space
 
 ```bash
 python scripts/analyze_static.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
-  --config-file config/vae_config.json \
+  --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
   --output-dir results/latent_viz \
   --method umap
@@ -385,7 +401,7 @@ ______________________________________________________________________
 
 Uses a single unified configuration file. See `config/README.md` for details.
 
-**Example: `config/vae_config.json`**
+**Example: `config/ar_vae_edente.json`**
 
 ```json
 {

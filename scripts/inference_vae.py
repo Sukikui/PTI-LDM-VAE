@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
@@ -9,21 +8,20 @@ import numpy as np
 import tifffile
 import torch
 from monai.config import print_config
-from monai.data import DataLoader, Dataset
-from monai.transforms import Compose, EnsureChannelFirst, EnsureType, LoadImage, Resize
 from monai.utils import set_determinism
 from PIL import Image
 from tqdm import tqdm
 
-from pti_ldm_vae.data import LocalNormalizeByMask
+from pti_ldm_vae.data import create_vae_inference_dataloader
 from pti_ldm_vae.models import VAEModel
+from pti_ldm_vae.utils.vae_loader import load_vae_config, load_vae_model
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="VAE Inference Script")
-    parser.add_argument("-c", "--config-file", default="./config/config_train_16g_cond.json", help="Config json file")
+    parser.add_argument("-c", "--config-file", required=True, help="Config json file")
     parser.add_argument(
         "--checkpoint", type=str, required=True, help="Path to checkpoint (e.g., checkpoint_epoch73.pth)"
     )
@@ -33,21 +31,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-samples", type=int, default=None, help="Number of samples to process (default: all)")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader workers (default: 4)",
+    )
     return parser.parse_args()
 
 
 def load_config(config_file: str) -> Any:
     """Load configuration from JSON file."""
-    config_dict = json.load(open(config_file))
-
-    class Config:
-        pass
-
-    config = Config()
-    for k, v in config_dict.items():
-        setattr(config, k, v)
-
-    return config
+    return load_vae_config(config_file)
 
 
 def setup_output_dirs(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -68,46 +63,40 @@ def setup_output_dirs(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
 
 def create_dataloader(
-    input_dir: str, patch_size: tuple, batch_size: int, num_samples: int | None = None
-) -> tuple[DataLoader, int]:
-    """Create dataloader for inference."""
-    input_path = Path(input_dir)
-    image_paths = sorted(input_path.glob("*.tif"))
+    input_dir: str,
+    patch_size: tuple,
+    batch_size: int,
+    num_samples: int | None = None,
+    num_workers: int = 4,
+) -> tuple[torch.utils.data.DataLoader, int]:
+    """Create dataloader for inference.
 
-    if len(image_paths) == 0:
-        raise FileNotFoundError(f"No .tif images found in {input_dir}")
+    Args:
+        input_dir (str): Directory containing .tif images.
+        patch_size (tuple): Spatial resize target as (H, W).
+        batch_size (int): Batch size for iteration.
+        num_samples (int | None): Optional cap on number of images to process.
+        num_workers (int): Number of worker processes for data loading.
 
-    # Limit number of samples if specified
-    if num_samples is not None:
-        image_paths = image_paths[:num_samples]
+    Returns:
+        tuple[DataLoader, int]: Dataloader and number of images found.
 
-    # Define transforms
-    transforms = Compose(
-        [
-            LoadImage(image_only=True),
-            EnsureChannelFirst(),
-            Resize(patch_size),
-            LocalNormalizeByMask(),
-            EnsureType(dtype=torch.float32),
-        ]
+    Raises:
+        FileNotFoundError: If no .tif images are discovered in ``input_dir``.
+    """
+    dataloader, image_paths = create_vae_inference_dataloader(
+        input_dir=input_dir,
+        patch_size=patch_size,
+        batch_size=batch_size,
+        num_samples=num_samples,
+        num_workers=num_workers,
     )
-
-    # Create dataset and dataloader
-    dataset = Dataset(data=image_paths, transform=transforms)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
-
     return dataloader, len(image_paths)
 
 
 def load_model(config: Any, checkpoint_path: str, device: torch.device) -> VAEModel:
     """Load VAE model from checkpoint."""
-    autoencoder = VAEModel.from_config(config.autoencoder_def).to(device)
-
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    autoencoder.load_state_dict(checkpoint["autoencoder_state_dict"])
-    autoencoder.eval()
-
-    return autoencoder
+    return load_vae_model(config, checkpoint_path, device)
 
 
 def save_results(idx: int, input_img: torch.Tensor, recon_img: torch.Tensor, out_tif: Path, out_png: Path) -> None:
@@ -166,7 +155,13 @@ def main() -> None:
 
     # Create dataloader
     patch_size = tuple(config.autoencoder_train["patch_size"])
-    dataloader, num_images = create_dataloader(args.input_dir, patch_size, args.batch_size, args.num_samples)
+    dataloader, num_images = create_dataloader(
+        input_dir=args.input_dir,
+        patch_size=patch_size,
+        batch_size=args.batch_size,
+        num_samples=args.num_samples,
+        num_workers=args.num_workers,
+    )
     print(f"[INFO] Found {num_images} images in {args.input_dir}")
 
     # Load model

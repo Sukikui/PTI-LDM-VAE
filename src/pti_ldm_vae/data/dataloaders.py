@@ -181,6 +181,53 @@ def _normalize_attributes(
     return {key: float(value) / divisor for key, value in attributes.items()}
 
 
+def _filter_attributes_for_paths(
+    paths: list[str],
+    attribute_sources: dict[str, dict[str, float]],
+    attribute_latent_mapping: dict[str, Any],
+    normalize_cfg: dict[str, Any] | None,
+) -> list[dict[str, float]]:
+    """Extract and normalize attributes for a list of image paths.
+
+    Args:
+        paths (list[str]): Image file paths.
+        attribute_sources (dict[str, dict[str, float]]): Per-source attribute JSONs keyed by source name.
+        attribute_latent_mapping (dict[str, Any]): Attribute config kept for AR-VAE.
+        normalize_cfg (dict[str, Any] | None): Optional normalization configuration.
+
+    Returns:
+        list[dict[str, float]]: Attributes aligned with ``paths`` order.
+
+    Raises:
+        FileNotFoundError: If an attribute entry is missing for a given path.
+        KeyError: If expected attribute keys are missing.
+        ValueError: If the data source cannot be inferred from the path.
+    """
+    attributes: list[dict[str, float]] = []
+    for path in paths:
+        base = os.path.basename(path)
+        if "edente" in path:
+            source_key = "edente"
+        elif "dente" in path:
+            source_key = "dente"
+        else:
+            raise ValueError(f"Cannot identify data source from path: {path}")
+
+        mapping = attribute_sources.get(source_key, {})
+        attribute_dict = mapping.get(base)
+        if attribute_dict is None:
+            raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
+
+        filtered = {key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict}
+        if len(filtered) != len(attribute_latent_mapping):
+            missing = set(attribute_latent_mapping).difference(filtered)
+            raise KeyError(f"Missing attributes for {base}: {missing}")
+
+        filtered = _normalize_attributes(filtered, normalize_cfg)
+        attributes.append(filtered)
+    return attributes
+
+
 def _print_dataset_stats(
     train_ds: Dataset,
     val_ds: Dataset,
@@ -223,6 +270,52 @@ def _print_dataset_stats(
     print(f"{'=' * 60}\n")
 
 
+def create_vae_inference_dataloader(
+    input_dir: str,
+    patch_size: tuple[int, int],
+    batch_size: int,
+    num_samples: int | None = None,
+    num_workers: int = 4,
+) -> tuple[DataLoader, list[str]]:
+    """Create a single dataloader for VAE inference or evaluation.
+
+    This reuses the same normalization (LocalNormalizeByMask) and resizing
+    as the training pipeline but does not apply augmentation, caching,
+    attributes, or splitting.
+
+    Args:
+        input_dir: Directory containing .tif images.
+        patch_size: Spatial resize target (H, W).
+        batch_size: Batch size for iteration.
+        num_samples: Optional cap on number of images to process.
+        num_workers: Number of dataloader workers.
+
+    Returns:
+        Tuple of (dataloader, list of image paths).
+
+    Raises:
+        FileNotFoundError: If no .tif images are found in ``input_dir``.
+    """
+    tif_paths = sorted(glob(os.path.join(input_dir, "*.tif")))
+    if len(tif_paths) == 0:
+        raise FileNotFoundError(f"No .tif images found in {input_dir}")
+    if num_samples is not None:
+        tif_paths = tif_paths[:num_samples]
+
+    transforms = Compose(
+        [
+            LoadImage(image_only=True),
+            EnsureChannelFirst(),
+            Resize(patch_size),
+            LocalNormalizeByMask(),
+            EnsureType(dtype=torch.float32),
+        ]
+    )
+    dataset = Dataset(data=tif_paths, transform=transforms)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    return dataloader, tif_paths
+
+
 def create_vae_dataloaders(
     data_base_dir: str,
     batch_size: int,
@@ -241,7 +334,7 @@ def create_vae_dataloaders(
     ar_vae_enabled: bool = False,
     regularized_attributes: dict[str, Any] | None = None,
     **kwargs,
-) -> tuple[DataLoader, DataLoader]:
+) -> tuple[DataLoader, DataLoader, list[str], list[str]]:
     """Create train and validation dataloaders for VAE training.
 
     Args:
@@ -264,7 +357,7 @@ def create_vae_dataloaders(
         **kwargs: Additional arguments (for compatibility)
 
     Returns:
-        Tuple of (train_loader, val_loader)
+        Tuple of (train_loader, val_loader, train_paths, val_paths)
 
     Raises:
         ValueError: If data_source is invalid, train_split is not in [0, 1], or cache_rate is not in [0, 1]
@@ -321,49 +414,24 @@ def create_vae_dataloaders(
         normalize_cfg = regularized_attributes.get("normalize_attributes")
 
         if data_source == "both":
-            for path in tif_paths:
-                base = os.path.basename(path)
-                if "edente" in path:
-                    source_key = "edente"
-                elif "dente" in path:
-                    source_key = "dente"
-                else:
-                    raise ValueError(f"Cannot identify data source from path: {path}")
-
-                attribute_dict = attribute_sources.get(source_key, {}).get(base)
-                if attribute_dict is None:
-                    raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
-
-                filtered = {
-                    key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict
-                }
-                if len(filtered) != len(attribute_latent_mapping):
-                    missing = set(attribute_latent_mapping).difference(filtered)
-                    raise KeyError(f"Missing attributes for {base}: {missing}")
-
-                filtered = _normalize_attributes(filtered, normalize_cfg)
-                attributes_per_image.append(filtered)
+            attributes_per_image = _filter_attributes_for_paths(
+                paths=tif_paths,
+                attribute_sources=attribute_sources,
+                attribute_latent_mapping=attribute_latent_mapping,
+                normalize_cfg=normalize_cfg,
+            )
         else:
             source_key = data_source
             mapping = attribute_sources.get(source_key)
             if mapping is None:
                 raise ValueError(f"No attribute mapping found for source {source_key}")
 
-            for path in tif_paths:
-                base = os.path.basename(path)
-                attribute_dict = mapping.get(base)
-                if attribute_dict is None:
-                    raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
-
-                filtered = {
-                    key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict
-                }
-                if len(filtered) != len(attribute_latent_mapping):
-                    missing = set(attribute_latent_mapping).difference(filtered)
-                    raise KeyError(f"Missing attributes for {base}: {missing}")
-
-                filtered = _normalize_attributes(filtered, normalize_cfg)
-                attributes_per_image.append(filtered)
+            attributes_per_image = _filter_attributes_for_paths(
+                paths=tif_paths,
+                attribute_sources=attribute_sources,
+                attribute_latent_mapping=attribute_latent_mapping,
+                normalize_cfg=normalize_cfg,
+            )
 
     # Shuffle with seed for reproducibility
     if seed is not None:
@@ -411,23 +479,12 @@ def create_vae_dataloaders(
                 )
                 attribute_latent_mapping = {k: v for k, v in raw_mapping.items() if not str(k).startswith("_")}
 
-                for path in val_paths:
-                    base = os.path.basename(path)
-                    source_key = "edente" if "edente" in path else "dente"
-                    mapping = attribute_sources.get(source_key, {})
-                    attribute_dict = mapping.get(base)
-                    if attribute_dict is None:
-                        raise FileNotFoundError(f"Attribute entry missing for {base} in source {source_key}")
-
-                    filtered = {
-                        key: float(attribute_dict[key]) for key in attribute_latent_mapping if key in attribute_dict
-                    }
-                    if len(filtered) != len(attribute_latent_mapping):
-                        missing = set(attribute_latent_mapping).difference(filtered)
-                        raise KeyError(f"Missing attributes for {base}: {missing}")
-
-            filtered = _normalize_attributes(filtered, normalize_cfg)
-            val_attributes.append(filtered)
+                val_attributes = _filter_attributes_for_paths(
+                    paths=list(val_paths),
+                    attribute_sources=attribute_sources,
+                    attribute_latent_mapping=attribute_latent_mapping,
+                    normalize_cfg=normalize_cfg,
+                )
             if rank == 0:
                 print(f"📁 Using external validation directory: {val_dir}")
         else:
@@ -536,7 +593,7 @@ def create_vae_dataloaders(
     if rank == 0:
         _print_dataset_stats(train_ds, val_ds, data_source, train_split, val_dir)
 
-    return train_loader, val_loader
+    return train_loader, val_loader, train_paths, val_paths
 
 
 def create_ldm_dataloaders(

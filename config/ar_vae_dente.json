@@ -1,7 +1,7 @@
 {
   "_comment": "AR-VAE configuration for dente with edente AR",
 
-  "data_base_dir": "./data",
+  "data_base_dir": "./data/train_val/",
   "run_dir": "./runs/ar_vae_dente",
   "resume_ckpt": false,
   "checkpoint_dir": "",
@@ -53,7 +53,7 @@
     "enabled": true,
     "_comment": "Unified configuration for AR-VAE attribute regularization",
 
-    "attribute_file": "./data/metrics/attributes_edente.json",
+    "attribute_file": "./data/train_val/metrics/attributes_edente.json",
     "_attribute_file_comment": "JSON containing a_l(x) for each image in the dente dataset",
 
     "gamma": 0.5,

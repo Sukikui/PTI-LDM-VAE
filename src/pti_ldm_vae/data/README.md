@@ -5,8 +5,11 @@ Dataloader utilities for VAE and LDM training.
 ## Overview
 
 - **`create_vae_dataloaders`**: Single-image dataloaders for VAE training
+- **`create_vae_inference_dataloader`**: Single dataloader for VAE inference/evaluation
 - **`create_ldm_dataloaders`**: Paired-image dataloaders for LDM training
 - **Transform classes**: Custom preprocessing (normalization, masking)
+
+Note: `create_vae_dataloaders` returns both loaders and file paths `(train_loader, val_loader, train_paths, val_paths)`. Use `_` to ignore paths if you only need the loaders.
 
 ______________________________________________________________________
 
@@ -18,7 +21,7 @@ ______________________________________________________________________
 from pti_ldm_vae.data import create_vae_dataloaders
 
 # Basic usage
-train_loader, val_loader = create_vae_dataloaders(
+train_loader, val_loader, _, _ = create_vae_dataloaders(
     data_base_dir="/path/to/data",
     batch_size=8,
     patch_size=(256, 256),
@@ -27,7 +30,7 @@ train_loader, val_loader = create_vae_dataloaders(
 )
 
 # With optional parameters
-train_loader, val_loader = create_vae_dataloaders(
+train_loader, val_loader, _, _ = create_vae_dataloaders(
     data_base_dir="/path/to/data",
     batch_size=8,
     patch_size=(256, 256),
@@ -39,6 +42,20 @@ train_loader, val_loader = create_vae_dataloaders(
     distributed=True,      # for DDP
     world_size=4,
     rank=rank
+)
+```
+
+### VAE Inference/Evaluation Dataloader
+
+```python
+from pti_ldm_vae.data import create_vae_inference_dataloader
+
+dataloader, image_paths = create_vae_inference_dataloader(
+    input_dir="/path/to/test_images",
+    patch_size=(256, 256),
+    batch_size=8,
+    num_samples=100,    # optional
+    num_workers=4       # optional
 )
 ```
 
@@ -98,10 +115,11 @@ ______________________________________________________________________
 
 ### VAE-specific
 
-| Parameter     | Type     | Default  | Description                                |
-| ------------- | -------- | -------- | ------------------------------------------ |
-| `data_source` | str      | "edente" | Which images: "edente", "dente", or "both" |
-| `val_dir`     | str/None | None     | Separate validation directory              |
+| Parameter      | Type     | Default  | Description                                          |
+| -------------- | -------- | -------- | ---------------------------------------------------- |
+| `data_source`  | str      | "edente" | Which images: "edente", "dente", or "both"           |
+| `val_dir`      | str/None | None     | Separate validation directory                        |
+| `return_paths` | bool     | False    | (Implicit) Returns train/val paths alongside loaders |
 
 ### LDM-specific
 
