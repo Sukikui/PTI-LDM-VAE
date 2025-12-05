@@ -11,7 +11,6 @@ import torch
 from dotenv import load_dotenv
 from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import list_data_collate
 from monai.losses import PatchAdversarialLoss, PerceptualLoss
 from monai.networks.nets import PatchDiscriminator
 from monai.utils import set_determinism
@@ -204,14 +203,28 @@ def _prepare_batch(
     images: torch.Tensor
     batch_attributes: dict[str, torch.Tensor] | None = None
 
-    # Normalize batch structure: collapse any list (from custom sampler/collate) using MONAI helper
+    # Normalize batch structure; handle edge case where a list of (image, attrs) slips through
     if isinstance(batch, list):
-        batch = list_data_collate(batch)
-
-    if isinstance(batch, tuple):
-        images, batch_attributes = batch
+        if not batch:
+            raise ValueError("Empty batch received from dataloader.")
+        if all(isinstance(item, tuple) and len(item) == 2 for item in batch):
+            imgs: list[torch.Tensor] = []
+            attr_buf: dict[str, list[torch.Tensor]] = {}
+            for img, attrs in batch:
+                imgs.append(torch.as_tensor(img))
+                if attrs is not None:
+                    for k, v in attrs.items():
+                        attr_buf.setdefault(k, []).append(torch.as_tensor(v))
+            images = torch.stack(imgs, dim=0)
+            if attr_buf:
+                batch_attributes = {k: torch.stack(v_list, dim=0).to(torch.float32) for k, v_list in attr_buf.items()}
+        else:
+            raise TypeError(f"Unsupported list batch elements: {[type(item) for item in batch]}")
     else:
-        images = batch
+        if isinstance(batch, tuple):
+            images, batch_attributes = batch
+        else:
+            images = batch
 
     if not isinstance(images, torch.Tensor):
         raise TypeError(f"Unsupported batch type: {type(images)}")
