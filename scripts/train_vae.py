@@ -213,9 +213,13 @@ def _prepare_batch(
             raise ValueError("Empty image batch received from dataloader.")
         if all(isinstance(img, torch.Tensor) for img in images):
             images = torch.stack(images, dim=0)
+        elif all(isinstance(img, dict) and "image" in img for img in images):
+            stacked = [torch.as_tensor(img["image"]) for img in images]
+            images = torch.stack(stacked, dim=0)
         else:
             try:
-                images = torch.as_tensor(images)
+                stacked = [torch.as_tensor(img) for img in images]
+                images = torch.stack(stacked, dim=0)
             except Exception as exc:  # pragma: no cover
                 raise TypeError(f"Unsupported batch element types: {type(images)}") from exc
     elif not isinstance(images, torch.Tensor):
