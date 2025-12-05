@@ -6,7 +6,7 @@ from glob import glob
 from typing import Any
 
 import torch
-from monai.data import DataLoader, Dataset
+from monai.data import DataLoader, Dataset, list_data_collate
 from monai.transforms import (
     Compose,
     EnsureChannelFirst,
@@ -541,7 +541,7 @@ def create_vae_dataloaders(
         val_ds = val_base
 
     # Create dataloaders with optional distributed sampling
-    collate_fn = collate_with_attributes if ar_vae_enabled else None
+    collate_fn = collate_with_attributes if ar_vae_enabled else list_data_collate
     if distributed:
         from torch.utils.data.distributed import DistributedSampler
 

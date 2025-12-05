@@ -10,6 +10,7 @@ Dataloader utilities for VAE and LDM training.
 - **Transform classes**: Custom preprocessing (normalization, masking)
 
 Note: `create_vae_dataloaders` returns both loaders and file paths `(train_loader, val_loader, train_paths, val_paths)`. Use `_` to ignore paths if you only need the loaders.
+The VAE loaders now always apply an explicit collate function (`collate_with_attributes` for AR-VAE or MONAI's `list_data_collate` otherwise) to guarantee that batches come back as tensors/dicts instead of plain Python lists across Torch/MONAI versions.
 
 ______________________________________________________________________
 
