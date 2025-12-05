@@ -127,7 +127,7 @@
     "name": "ar_vae_dente",
     "_name_comment": "Run name. If null, auto-generated from run_dir",
 
-    "tags": ["VAE", "dente", "6-AR"],
+    "tags": ["VAE", "dente", "6-AR", "Spatial-AR"],
     "_tags_comment": "Tags for organizing runs in W&B UI",
 
     "notes": "AR-VAE training with attribute regularization on dente dataset",
