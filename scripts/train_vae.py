@@ -218,6 +218,9 @@ def _prepare_batch(
             images = torch.stack(imgs, dim=0)
             if attr_buf:
                 batch_attributes = {k: torch.stack(v_list, dim=0).to(torch.float32) for k, v_list in attr_buf.items()}
+        elif len(batch) == 2 and isinstance(batch[0], torch.Tensor) and isinstance(batch[1], dict):
+            images = batch[0]
+            batch_attributes = {k: torch.as_tensor(v) for k, v in batch[1].items()}
         else:
             raise TypeError(f"Unsupported list batch elements: {[type(item) for item in batch]}")
     else:
