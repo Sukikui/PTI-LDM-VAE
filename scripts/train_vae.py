@@ -179,6 +179,58 @@ def init_wandb(args, rank):
     return wandb
 
 
+def _prepare_batch(
+    batch: torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]] | list[torch.Tensor],
+    device: torch.device,
+    ar_vae_enabled: bool,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor] | None]:
+    """Convert a dataloader batch to tensors on the target device.
+
+    This guards against environments where the default collate returns lists instead of stacked tensors.
+
+    Args:
+        batch: Batch from the dataloader (tensor, list of tensors, or tuple with attributes).
+        device: Target device for training.
+        ar_vae_enabled: Whether attribute-regularized VAE is active (requires attributes).
+
+    Returns:
+        Tuple of (images tensor, optional attributes dictionary on device).
+
+    Raises:
+        ValueError: If AR-VAE is enabled but attributes are missing.
+        TypeError: If the batch format is unsupported.
+    """
+    images: torch.Tensor
+    batch_attributes: dict[str, torch.Tensor] | None = None
+
+    if isinstance(batch, tuple):
+        images, batch_attributes = batch
+    else:
+        images = batch
+
+    if isinstance(images, list):
+        if not images:
+            raise ValueError("Empty image batch received from dataloader.")
+        if all(isinstance(img, torch.Tensor) for img in images):
+            images = torch.stack(images, dim=0)
+        else:
+            try:
+                images = torch.as_tensor(images)
+            except Exception as exc:  # pragma: no cover
+                raise TypeError(f"Unsupported batch element types: {type(images)}") from exc
+    elif not isinstance(images, torch.Tensor):
+        raise TypeError(f"Unsupported batch type: {type(images)}")
+
+    images = images.to(device)
+
+    if batch_attributes is not None:
+        batch_attributes = {k: v.to(device) for k, v in batch_attributes.items()}
+    elif ar_vae_enabled:
+        raise ValueError("AR-VAE is enabled but attributes are missing from the batch.")
+
+    return images, batch_attributes
+
+
 def create_models(args, device, ddp_bool, rank):
     """Create VAE and discriminator models."""
     autoencoder = VAEModel.from_config(args.autoencoder_def).to(device)
@@ -287,19 +339,7 @@ def train_epoch(
     delta_global = regularized_attributes.get("delta_global", {}) if regularized_attributes else {}
 
     for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{max_epochs}")):
-        images: torch.Tensor
-        batch_attributes: dict[str, torch.Tensor] | None = None
-
-        if isinstance(batch, tuple):
-            images, batch_attributes = batch
-        else:
-            images = batch
-
-        images = images.to(device)
-        if batch_attributes is not None:
-            batch_attributes = {k: v.to(device) for k, v in batch_attributes.items()}
-        elif ar_vae_enabled:
-            raise ValueError("AR-VAE is enabled but attributes are missing from the batch.")
+        images, batch_attributes = _prepare_batch(batch, device, ar_vae_enabled)
 
         # Train generator
         optimizer_g.zero_grad(set_to_none=True)
@@ -442,18 +482,7 @@ def validate(
         dir_diff.mkdir(parents=True, exist_ok=True)
 
     for step, batch in enumerate(val_loader):
-        images: torch.Tensor
-        batch_attributes: dict[str, torch.Tensor] | None = None
-        if isinstance(batch, tuple):
-            images, batch_attributes = batch
-        else:
-            images = batch
-
-        images = images.to(device)
-        if batch_attributes is not None:
-            batch_attributes = {k: v.to(device) for k, v in batch_attributes.items()}
-        elif ar_vae_enabled:
-            raise ValueError("AR-VAE is enabled but attributes are missing from the validation batch.")
+        images, batch_attributes = _prepare_batch(batch, device, ar_vae_enabled)
 
         with torch.no_grad():
             reconstruction, z_mu, z_sigma = autoencoder(images)
