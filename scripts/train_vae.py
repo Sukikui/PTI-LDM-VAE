@@ -211,7 +211,19 @@ def _prepare_batch(
     if isinstance(images, list):
         if not images:
             raise ValueError("Empty image batch received from dataloader.")
-        if all(isinstance(img, torch.Tensor) for img in images):
+        # Case: list of (image, attrs) tuples (no collate)
+        if all(isinstance(item, tuple) and len(item) == 2 for item in images):
+            stacked_imgs = []
+            attr_buffer: dict[str, list[float]] = {}
+            for img, attrs in images:
+                stacked_imgs.append(torch.as_tensor(img))
+                if attrs is not None:
+                    for k, v in attrs.items():
+                        attr_buffer.setdefault(k, []).append(float(v))
+            images = torch.stack(stacked_imgs, dim=0)
+            if attr_buffer:
+                batch_attributes = {k: torch.tensor(v, dtype=torch.float32) for k, v in attr_buffer.items()}
+        elif all(isinstance(img, torch.Tensor) for img in images):
             images = torch.stack(images, dim=0)
         elif all(isinstance(img, dict) and "image" in img for img in images):
             stacked = [torch.as_tensor(img["image"]) for img in images]
