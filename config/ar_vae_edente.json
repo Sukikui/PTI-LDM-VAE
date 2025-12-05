@@ -1,7 +1,7 @@
 {
   "_comment": "AR-VAE configuration for edente only",
 
-  "data_base_dir": "./data",
+  "data_base_dir": "./data/train_val",
   "run_dir": "./runs/ar_vae_edente",
   "resume_ckpt": false,
   "checkpoint_dir": "",
