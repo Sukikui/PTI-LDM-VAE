@@ -402,6 +402,18 @@ def train_epoch(
             ar_vae_enabled=ar_vae_enabled,
         )
 
+        # Debug stats for KL explosion (first batch only)
+        if step == 0 and rank == 0:
+            with torch.no_grad():
+                sigma = torch.exp(0.5 * z_logvar)
+                print(
+                    "[DEBUG] Train batch0 stats | "
+                    f"z_mu mean={z_mu.mean().item():.4f} min={z_mu.min().item():.4f} max={z_mu.max().item():.4f} | "
+                    f"logvar mean={z_logvar.mean().item():.4f} min={z_logvar.min().item():.4f} max={z_logvar.max().item():.4f} | "
+                    f"sigma mean={sigma.mean().item():.4f} min={sigma.min().item():.4f} max={sigma.max().item():.4f} | "
+                    f"kl_loss={kl_loss.item():.4f}"
+                )
+
         loss_g.backward()
         optimizer_g.step()
 
@@ -546,6 +558,17 @@ def validate(
                     subset_pairs=subset_pairs,
                     delta_global=delta_global,
                 )
+
+        # Debug stats for KL explosion (first val batch only)
+        if step == 0 and rank == 0:
+            sigma = torch.exp(0.5 * z_logvar)
+            print(
+                "[DEBUG] Val batch0 stats | "
+                f"z_mu mean={z_mu.mean().item():.4f} min={z_mu.min().item():.4f} max={z_mu.max().item():.4f} | "
+                f"logvar mean={z_logvar.mean().item():.4f} min={z_logvar.min().item():.4f} max={z_logvar.max().item():.4f} | "
+                f"sigma mean={sigma.mean().item():.4f} min={sigma.min().item():.4f} max={sigma.max().item():.4f} | "
+                f"kl_loss={kl_loss.item():.4f}"
+            )
 
         val_recon_epoch_loss += recons_loss.item()
         val_kl_epoch_loss += kl_loss.item()
