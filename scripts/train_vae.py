@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 import wandb
 from pti_ldm_vae.data import create_vae_dataloaders
-from pti_ldm_vae.models import VAEModel, compute_ar_vae_loss, compute_kl_loss
+from pti_ldm_vae.models import VAEModel, compute_ar_vae_loss, compute_kl_loss, compute_total_loss
 from pti_ldm_vae.utils import ensure_three_channels
 from pti_ldm_vae.utils.distributed import setup_ddp
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
@@ -367,7 +367,18 @@ def train_epoch(
         recon_rgb = ensure_three_channels(reconstruction.float())
         images_rgb = ensure_three_channels(images.float())
         p_loss = loss_perceptual(recon_rgb, images_rgb)
-        loss_g = recons_loss + kl_weight * kl_loss + perceptual_weight * p_loss
+        loss_g = compute_total_loss(
+            recons_loss=recons_loss,
+            kl_loss=kl_loss,
+            perceptual_loss=p_loss,
+            adv_gen_loss=generator_loss if epoch > 5 else torch.tensor(0.0, device=device),
+            ar_loss=ar_loss,
+            kl_weight=kl_weight,
+            perceptual_weight=perceptual_weight,
+            adv_weight=adv_weight,
+            ar_gamma=ar_gamma,
+            ar_vae_enabled=ar_vae_enabled,
+        )
 
         if epoch > 5:  # warmup epochs
             logits_fake = discriminator(reconstruction.contiguous().float())[-1]
@@ -462,6 +473,8 @@ def validate(
     regularized_attributes,
     pairwise_mode,
     subset_pairs,
+    kl_weight,
+    ar_gamma,
 ):
     """Run validation."""
     autoencoder.eval()
@@ -566,14 +579,28 @@ def validate(
     val_ar_epoch_loss = val_ar_epoch_loss / (step + 1)
     val_ar_losses_per_attr = {k: v / (step + 1) for k, v in val_ar_losses_per_attr.items()}
 
+    val_loss_total = compute_total_loss(
+        recons_loss=val_recon_epoch_loss,
+        kl_loss=val_kl_epoch_loss,
+        perceptual_loss=val_perc_epoch_loss,
+        adv_gen_loss=val_adv_gen_epoch_loss,
+        ar_loss=val_ar_epoch_loss,
+        kl_weight=kl_weight,
+        perceptual_weight=perceptual_weight,
+        adv_weight=adv_weight,
+        ar_gamma=ar_gamma,
+        ar_vae_enabled=ar_vae_enabled,
+    )
+
     if rank == 0 and use_wandb:
         log_dict = {
-            "val/recon_loss": val_recon_epoch_loss - perceptual_weight * val_perc_epoch_loss,  # intensity only
+            "val/recon_loss": val_recon_epoch_loss,  # intensity only
             "val/kl_loss": val_kl_epoch_loss,
             "val/perceptual_loss": val_perc_epoch_loss,
             "val/adv_gen_loss": val_adv_gen_epoch_loss,
             "val/adv_disc_loss": val_adv_disc_epoch_loss,
             "val/ar_loss_total": val_ar_epoch_loss,
+            "val/loss_total": val_loss_total,
             "epoch": epoch,
         }
         for attr_name, loss_attr in val_ar_losses_per_attr.items():

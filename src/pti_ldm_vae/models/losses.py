@@ -30,6 +30,42 @@ def compute_kl_loss(
     return kl.mean()
 
 
+def compute_total_loss(
+    recons_loss: torch.Tensor,
+    kl_loss: torch.Tensor,
+    perceptual_loss: torch.Tensor,
+    adv_gen_loss: torch.Tensor,
+    ar_loss: torch.Tensor,
+    *,
+    kl_weight: float,
+    perceptual_weight: float,
+    adv_weight: float,
+    ar_gamma: float,
+    ar_vae_enabled: bool,
+) -> torch.Tensor:
+    """Compose the total loss with consistent weighting for train/validation.
+
+    Args:
+        recons_loss: Reconstruction loss (intensity component).
+        kl_loss: KL divergence term.
+        perceptual_loss: Perceptual loss term.
+        adv_gen_loss: Adversarial generator loss term.
+        ar_loss: Attribute-regularization loss term.
+        kl_weight: Weight applied to KL term.
+        perceptual_weight: Weight applied to perceptual term.
+        adv_weight: Weight applied to adversarial generator term.
+        ar_gamma: Weight applied to AR term.
+        ar_vae_enabled: Whether AR-VAE is enabled.
+
+    Returns:
+        Total loss tensor.
+    """
+    total = recons_loss + kl_weight * kl_loss + perceptual_weight * perceptual_loss + adv_weight * adv_gen_loss
+    if ar_vae_enabled:
+        total = total + ar_gamma * ar_loss
+    return total
+
+
 def compute_ar_vae_loss(
     latent_vectors: torch.Tensor,
     attributes: dict[str, torch.Tensor],
