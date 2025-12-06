@@ -61,7 +61,7 @@ ______________________________________________________________________
 
 ```python
 # Training
-reconstruction, z_mu, z_sigma = vae(images)
+reconstruction, z_mu, z_logvar = vae(images)
 
 # Encoding for diffusion (stage 2)
 latent = vae.encode_stage_2_inputs(images)
@@ -179,9 +179,9 @@ The `compute_kl_loss` function calculates the KL divergence between the learned 
 ```python
 from pti_ldm_vae.models import compute_kl_loss
 
-# During VAE training
-reconstruction, z_mu, z_sigma = vae(images)
-kl_loss = compute_kl_loss(z_mu, z_sigma)
+# During VAE training (AutoencoderKL returns reconstruction, mean, logvar)
+reconstruction, z_mu, z_logvar = vae(images)
+kl_loss = compute_kl_loss(z_mu, z_logvar)
 
 # Combine with reconstruction loss
 recons_loss = intensity_loss(reconstruction, images)
@@ -191,7 +191,7 @@ loss = recons_loss + kl_weight * kl_loss
 **Parameters:**
 
 - `z_mu` (torch.Tensor): Mean of the latent distribution, shape `[B, C, ...]`
-- `z_sigma` (torch.Tensor): Standard deviation of the latent distribution, shape `[B, C, ...]`
+- `z_logvar` (torch.Tensor): Log-variance of the latent distribution, shape `[B, C, ...]`
 
 **Returns:**
 

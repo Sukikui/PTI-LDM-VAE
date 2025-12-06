@@ -10,7 +10,7 @@ class VAEModel(nn.Module):
     while exposing all MONAI AutoencoderKL functionality.
 
     Encoding modes:
-        - encode_stage_2_inputs(): Stochastic sampling (z = z_mu + eps * z_sigma)
+        - encode_stage_2_inputs(): Stochastic sampling (z = z_mu + eps * sigma with sigma = exp(0.5 * logvar))
           Use this for training diffusion models (Stage 2).
 
         - encode_deterministic(): Deterministic encoding using z_mu only
@@ -38,7 +38,7 @@ class VAEModel(nn.Module):
         >>> vae = VAEModel.from_config(config)
         >>>
         >>> # For training (stochastic)
-        >>> reconstruction, z_mu, z_sigma = vae(images)
+        >>> reconstruction, z_mu, z_logvar = vae(images)
         >>> z_sampled = vae.encode_stage_2_inputs(images)
         >>>
         >>> # For inference/analysis (deterministic)
@@ -109,7 +109,7 @@ class VAEModel(nn.Module):
             x: Input tensor
 
         Returns:
-            Tuple of (reconstruction, z_mu, z_sigma)
+            Tuple of (reconstruction, z_mu, z_logvar)
         """
         return self.autoencoder(x)
 

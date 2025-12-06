@@ -160,13 +160,13 @@ def evaluate(
     for batch in tqdm(dataloader, desc="Evaluating"):
         images = batch.to(device)
         with torch.no_grad():
-            reconstruction, z_mu, z_sigma = autoencoder(images)
+            reconstruction, z_mu, z_logvar = autoencoder(images)
 
         recon_clamped = torch.clamp(reconstruction, 0.0, 1.0)
         images_clamped = torch.clamp(images, 0.0, 1.0)
 
         intensity_val = intensity_loss_fn(reconstruction, images)
-        kl_val = compute_kl_loss(z_mu, z_sigma)
+        kl_val = compute_kl_loss(z_mu, z_logvar)
         perc_val = perceptual_loss_fn(
             ensure_three_channels(reconstruction.float()), ensure_three_channels(images.float())
         )

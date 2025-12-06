@@ -1,21 +1,33 @@
 import torch
 
 
-def compute_kl_loss(z_mu: torch.Tensor, z_sigma: torch.Tensor) -> torch.Tensor:
-    """Compute KL divergence loss for Variational Autoencoder.
+def compute_kl_loss(
+    z_mu: torch.Tensor,
+    z_logvar: torch.Tensor,
+    *,
+    input_is_logvar: bool = True,
+) -> torch.Tensor:
+    """Compute KL divergence loss for a diagonal Gaussian posterior.
+
+    MONAI AutoencoderKL returns ``(reconstruction, mean, logvar)``; by default this
+    function assumes the second argument is a log-variance tensor. If you pass a
+    standard deviation tensor instead, set ``input_is_logvar=False``.
 
     Args:
-        z_mu: Mean of the latent distribution [B, C, ...]
-        z_sigma: Standard deviation of the latent distribution [B, C, ...]
+        z_mu: Mean of the latent distribution [B, C, ...].
+        z_logvar: Log-variance (default) or standard deviation tensor.
+        input_is_logvar: When ``True`` (default), treats ``z_logvar`` as log-variance.
+            When ``False``, treats ``z_logvar`` as sigma and converts to log-variance.
 
     Returns:
-        KL divergence loss (scalar)
+        KL divergence loss (scalar, averaged over batch).
     """
-    kl_loss = 0.5 * torch.sum(
-        z_mu.pow(2) + z_sigma.pow(2) - torch.log(z_sigma.pow(2)) - 1,
-        dim=list(range(1, len(z_sigma.shape))),
-    )
-    return torch.sum(kl_loss) / kl_loss.shape[0]
+    if not input_is_logvar:
+        z_logvar = torch.log(z_logvar.pow(2) + 1e-8)
+
+    dim = list(range(1, z_logvar.dim()))
+    kl = -0.5 * torch.sum(1 + z_logvar - z_mu.pow(2) - torch.exp(z_logvar), dim=dim)
+    return kl.mean()
 
 
 def compute_ar_vae_loss(

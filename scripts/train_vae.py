@@ -354,7 +354,7 @@ def train_epoch(
 
         # Train generator
         optimizer_g.zero_grad(set_to_none=True)
-        reconstruction, z_mu, z_sigma = autoencoder(images)
+        reconstruction, z_mu, z_logvar = autoencoder(images)
 
         latent_vectors = z_mu
         if latent_vectors.dim() == 4:
@@ -363,7 +363,7 @@ def train_epoch(
             raise ValueError(f"Unexpected latent shape: {latent_vectors.shape}")
 
         recons_loss = intensity_loss(reconstruction, images)
-        kl_loss = compute_kl_loss(z_mu, z_sigma)
+        kl_loss = compute_kl_loss(z_mu, z_logvar)
         recon_rgb = ensure_three_channels(reconstruction.float())
         images_rgb = ensure_three_channels(images.float())
         p_loss = loss_perceptual(recon_rgb, images_rgb)
@@ -496,12 +496,12 @@ def validate(
         images, batch_attributes = _prepare_batch(batch, device, ar_vae_enabled)
 
         with torch.no_grad():
-            reconstruction, z_mu, z_sigma = autoencoder(images)
+            reconstruction, z_mu, z_logvar = autoencoder(images)
             recon_rgb = ensure_three_channels(reconstruction.float())
             images_rgb = ensure_three_channels(images.float())
             p_loss = loss_perceptual(recon_rgb, images_rgb)
             recons_loss = intensity_loss(reconstruction.float(), images.float()) + perceptual_weight * p_loss
-            kl_loss = compute_kl_loss(z_mu, z_sigma)
+            kl_loss = compute_kl_loss(z_mu, z_logvar)
 
             adv_gen_loss = torch.tensor(0.0, device=device)
             adv_disc_loss = torch.tensor(0.0, device=device)
