@@ -98,7 +98,7 @@
     "perceptual_weight": 1.0,
     "_perceptual_weight_comment": "Weight for VGG perceptual loss. Higher = better texture quality, lower = faster convergence",
 
-    "kl_weight": 1e-6,
+    "kl_weight": 1e-4,
     "_kl_weight_comment": "Weight for KL divergence. Controls latent regularization. Too high = blurry reconstructions, too low = unstructured latent. Range: 1e-6 to 1e-5",
 
     "recon_loss": "l1",
