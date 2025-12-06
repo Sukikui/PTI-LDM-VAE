@@ -367,23 +367,11 @@ def train_epoch(
         recon_rgb = ensure_three_channels(reconstruction.float())
         images_rgb = ensure_three_channels(images.float())
         p_loss = loss_perceptual(recon_rgb, images_rgb)
-        loss_g = compute_total_loss(
-            recons_loss=recons_loss,
-            kl_loss=kl_loss,
-            perceptual_loss=p_loss,
-            adv_gen_loss=generator_loss if epoch > 5 else torch.tensor(0.0, device=device),
-            ar_loss=ar_loss,
-            kl_weight=kl_weight,
-            perceptual_weight=perceptual_weight,
-            adv_weight=adv_weight,
-            ar_gamma=ar_gamma,
-            ar_vae_enabled=ar_vae_enabled,
-        )
+        generator_loss = torch.tensor(0.0, device=device)
 
         if epoch > 5:  # warmup epochs
             logits_fake = discriminator(reconstruction.contiguous().float())[-1]
             generator_loss = adv_loss(logits_fake, target_is_real=True, for_discriminator=False)
-            loss_g = loss_g + adv_weight * generator_loss
 
         ar_loss = torch.tensor(0.0, device=device)
         ar_losses_per_attr: dict[str, torch.Tensor] = {}
@@ -398,12 +386,27 @@ def train_epoch(
                 subset_pairs=subset_pairs,
                 delta_global=delta_global,
             )
-            loss_g = loss_g + ar_gamma * ar_loss
+        else:
+            ar_loss = torch.tensor(0.0, device=device)
+
+        loss_g = compute_total_loss(
+            recons_loss=recons_loss,
+            kl_loss=kl_loss,
+            perceptual_loss=p_loss,
+            adv_gen_loss=generator_loss,
+            ar_loss=ar_loss,
+            kl_weight=kl_weight,
+            perceptual_weight=perceptual_weight,
+            adv_weight=adv_weight,
+            ar_gamma=ar_gamma,
+            ar_vae_enabled=ar_vae_enabled,
+        )
 
         loss_g.backward()
         optimizer_g.step()
 
         # Train discriminator
+        discriminator_loss = torch.tensor(0.0, device=device)
         if epoch > 5:
             optimizer_d.zero_grad(set_to_none=True)
             logits_fake = discriminator(reconstruction.contiguous().detach())[-1]
@@ -463,6 +466,8 @@ def validate(
     perceptual_weight,
     adv_loss,
     adv_weight,
+    kl_weight,
+    ar_gamma,
     args,
     device,
     rank,
@@ -473,8 +478,6 @@ def validate(
     regularized_attributes,
     pairwise_mode,
     subset_pairs,
-    kl_weight,
-    ar_gamma,
 ):
     """Run validation."""
     autoencoder.eval()
@@ -513,7 +516,7 @@ def validate(
             recon_rgb = ensure_three_channels(reconstruction.float())
             images_rgb = ensure_three_channels(images.float())
             p_loss = loss_perceptual(recon_rgb, images_rgb)
-            recons_loss = intensity_loss(reconstruction.float(), images.float()) + perceptual_weight * p_loss
+            recons_loss = intensity_loss(reconstruction.float(), images.float())
             kl_loss = compute_kl_loss(z_mu, z_logvar)
 
             adv_gen_loss = torch.tensor(0.0, device=device)
@@ -547,7 +550,7 @@ def validate(
         val_recon_epoch_loss += recons_loss.item()
         val_kl_epoch_loss += kl_loss.item()
         val_perc_epoch_loss += p_loss.item()
-        val_adv_gen_epoch_loss += (adv_weight * adv_gen_loss).item()
+        val_adv_gen_epoch_loss += adv_gen_loss.item()
         val_adv_disc_epoch_loss += (adv_weight * adv_disc_loss).item()
         val_ar_epoch_loss += ar_loss.item()
         for attr_name, loss_attr in ar_losses_per_attr.items():
@@ -597,7 +600,7 @@ def validate(
             "val/recon_loss": val_recon_epoch_loss,  # intensity only
             "val/kl_loss": val_kl_epoch_loss,
             "val/perceptual_loss": val_perc_epoch_loss,
-            "val/adv_gen_loss": val_adv_gen_epoch_loss,
+            "val/adv_gen_loss": adv_weight * val_adv_gen_epoch_loss,
             "val/adv_disc_loss": val_adv_disc_epoch_loss,
             "val/ar_loss_total": val_ar_epoch_loss,
             "val/loss_total": val_loss_total,
@@ -862,6 +865,8 @@ def main() -> None:
                 perceptual_weight,
                 adv_loss,
                 adv_weight,
+                kl_weight,
+                ar_gamma,
                 args,
                 device,
                 rank,
