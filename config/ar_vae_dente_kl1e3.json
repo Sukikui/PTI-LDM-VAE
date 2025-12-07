@@ -124,7 +124,7 @@
     "entity": null,
     "_entity_comment": "W&B username or team. If null, uses WANDB_ENTITY from .env file",
 
-    "name": "ar_vae_dente",
+    "name": "ar_vae_dente_kl1e3",
     "_name_comment": "Run name. If null, auto-generated from run_dir",
 
     "tags": ["VAE", "dente", "6-AR", "Spatial-AR"],
