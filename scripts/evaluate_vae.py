@@ -92,25 +92,6 @@ def create_dataloader(
     )
 
 
-def load_model(config: Any, checkpoint_path: str, device: torch.device) -> VAEModel:
-    """Load VAE model from checkpoint.
-
-    Args:
-        config: Parsed config object.
-        checkpoint_path: Path to checkpoint.
-        device: Torch device.
-
-    Returns:
-        Loaded VAE model in eval mode.
-    """
-    autoencoder = VAEModel.from_config(config.autoencoder_def).to(device)
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    state_dict = checkpoint.get("autoencoder_state_dict", checkpoint)
-    autoencoder.load_state_dict(state_dict)
-    autoencoder.eval()
-    return autoencoder
-
-
 def select_intensity_loss(config: Any) -> torch.nn.Module:
     """Select intensity loss (L1 or L2) to mirror training.
 

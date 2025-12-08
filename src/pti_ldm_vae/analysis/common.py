@@ -68,17 +68,14 @@ def resolve_config_references(config: dict, root_config: dict) -> dict:
     resolved = {}
     for key, value in config.items():
         if isinstance(value, str) and value.startswith("@"):
-            # Reference to root config variable (e.g., "@spatial_dims")
-            ref_key = value[1:]  # Remove @ prefix
+            ref_key = value[1:]
             resolved[key] = root_config.get(ref_key, value)
         elif isinstance(value, str) and value.startswith("$@"):
-            # Reference with $ prefix (e.g., "$@image_channels")
-            ref_key = value[2:]  # Remove $@ prefix
+            ref_key = value[2:]
             resolved[key] = root_config.get(ref_key, value)
         elif isinstance(value, dict):
             resolved[key] = resolve_config_references(value, root_config)
         elif isinstance(value, list):
-            # Handle lists that might contain references
             resolved[key] = [
                 root_config.get(item[1:], item) if isinstance(item, str) and item.startswith("@") else item
                 for item in value
@@ -102,11 +99,9 @@ def load_vae_model(config_file: str, vae_weights: str, device: torch.device) -> 
     Returns:
         Loaded VAE model in eval mode
     """
-    # Load config dict
     with open(config_file) as f:
         config_dict = json.load(f)
 
-    # Resolve @variable references in autoencoder_def
     autoencoder_config = resolve_config_references(config_dict["autoencoder_def"], config_dict)
 
     vae = VAEModel.from_config(autoencoder_config).to(device)
@@ -147,7 +142,6 @@ def encode_single_image(analyzer: LatentSpaceAnalyzer, image_path: str) -> tuple
     Returns:
         Tuple of (latent_vector, patient_id)
     """
-    # Use analyzer's encode_images method with single image
     latent, ids = analyzer.encode_images([image_path])
     return latent[0], ids[0]
 
@@ -218,14 +212,11 @@ def load_and_encode_group_with_cache(
     """
     from pti_ldm_vae.analysis.latent_cache import LatentCache
 
-    # Collect image paths
     image_paths = collect_image_paths(folder_path, max_images)
 
-    # Create encoder function for cache system
     def encoder_fn(img_path: str) -> tuple[np.ndarray, str]:
         return encode_single_image(analyzer, img_path)
 
-    # Use cache system
     cache = LatentCache(cache_root=cache_dir)
     latents, ids, paths = cache.get_or_encode_batch(
         image_paths=image_paths,
@@ -275,7 +266,6 @@ def save_visualization_and_legend(
     )
     print(f"✅ Plot saved to {save_path}")
 
-    # Save color legend if coloring by patient
     if color_by_patient:
         all_ids = ids_group1
         if ids_group2:

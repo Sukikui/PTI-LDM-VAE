@@ -10,8 +10,9 @@ Training, inference, and analysis scripts for the PTI-LDM-VAE project.
 | `train_ldm.py`            | Train a conditional Latent Diffusion Model                                      |
 | `inference_vae.py`        | Run VAE inference on images                                                     |
 | `inference_ldm.py`        | Generate images with trained LDM                                                |
-| `analyze_static.py`       | Generate static latent space visualizations                                     |
+| `analyze_static.py`       | Generate static latent space visualizations (uses package analysis helpers)     |
 | `analyze_interactive.py`  | Interactive latent space exploration (UMAP/t-SNE, clic image, distance latente) |
+| `analyze_ar_channels.py`  | Interactive web viewer for AR-VAE attribute channels on a single image          |
 | `compute_mask_metrics.py` | Measure edente/dente mask widths/heights                                        |
 
 ______________________________________________________________________
@@ -204,6 +205,20 @@ python scripts/compute_mask_metrics.py \
 ______________________________________________________________________
 
 ## Analysis Scripts
+
+Shared helpers for analysis live in `pti_ldm_vae.analysis.common` and are imported directly by the scripts.
+
+### analyze_ar_channels.py
+
+Interactive Dash viewer showing input, reconstruction, and each AR attribute channel.
+
+```bash
+python scripts/analyze_ar_channels.py \
+  --config-file config/ar_vae_edente.json \
+  --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
+  --image-path data/edente/sample.tif \
+  --port 8052
+```
 
 ### analyze_static.py
 

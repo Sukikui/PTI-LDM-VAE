@@ -3,7 +3,10 @@ import argparse
 import numpy as np
 import plotly.graph_objects as go
 import umap
-from analysis_common import (
+from sklearn.decomposition import PCA
+
+from pti_ldm_vae.analysis import LatentSpaceAnalyzer
+from pti_ldm_vae.analysis.common import (
     compute_and_save_statistics,
     create_transforms,
     load_and_encode_group_with_cache,
@@ -11,9 +14,6 @@ from analysis_common import (
     set_seed,
     setup_device_and_output,
 )
-from sklearn.decomposition import PCA
-
-from pti_ldm_vae.analysis import LatentSpaceAnalyzer
 
 
 def parse_args() -> argparse.Namespace:

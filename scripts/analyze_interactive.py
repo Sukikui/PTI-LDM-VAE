@@ -8,19 +8,19 @@ import dash
 import numpy as np
 import plotly.graph_objects as go
 import umap
-from analysis_common import (
-    create_transforms,
-    load_and_encode_group_with_cache,
-    load_vae_model,
-    set_seed,
-    setup_device_and_output,
-)
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 from PIL import Image
 from sklearn.decomposition import PCA
 
 from pti_ldm_vae.analysis import LatentSpaceAnalyzer, latent_distance, latent_distance_cross
+from pti_ldm_vae.analysis.common import (
+    create_transforms,
+    load_and_encode_group_with_cache,
+    load_vae_model,
+    set_seed,
+    setup_device_and_output,
+)
 
 
 def parse_args() -> argparse.Namespace:
