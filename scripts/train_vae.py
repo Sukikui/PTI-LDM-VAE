@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import tifffile
 import torch
@@ -241,6 +242,19 @@ def _prepare_batch(
         raise ValueError("AR-VAE is enabled but attributes are missing from the batch.")
 
     return images, batch_attributes
+
+
+def _resolve_bool(value: Any) -> bool:
+    """Interpret strings like \"false\"/\"true\" safely instead of Python truthiness."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "y"}:
+            return True
+        if lowered in {"false", "0", "no", "n", ""}:
+            return False
+    return bool(value)
 
 
 def create_models(args, device, ddp_bool, rank):
@@ -626,12 +640,13 @@ def validate(
             "val/perceptual_loss": val_perc_epoch_loss,
             "val/adv_gen_loss": adv_weight * val_adv_gen_epoch_loss,
             "val/adv_disc_loss": val_adv_disc_epoch_loss,
-            "val/ar_loss_total": val_ar_epoch_loss,
             "val/loss_total": val_loss_total,
             "epoch": epoch,
         }
-        for attr_name, loss_attr in val_ar_losses_per_attr.items():
-            log_dict[f"val/ar_loss_{attr_name}"] = loss_attr
+        if ar_vae_enabled:
+            log_dict["val/ar_loss_total"] = val_ar_epoch_loss
+            for attr_name, loss_attr in val_ar_losses_per_attr.items():
+                log_dict[f"val/ar_loss_{attr_name}"] = loss_attr
         if epoch % log_triplet_every == 0:
             images = [
                 wandb.Image(triplet.permute(1, 2, 0).numpy(), caption=f"step{step_idx:03}")
@@ -741,9 +756,9 @@ def main() -> None:
     regularized_attributes = (
         getattr(args, "regularized_attributes", {}) if hasattr(args, "regularized_attributes") else {}
     )
-    ar_vae_enabled = bool(
-        args.autoencoder_train.get("ar_vae_enabled", False) or regularized_attributes.get("enabled", False)
-    )
+    ar_from_train = _resolve_bool(args.autoencoder_train.get("ar_vae_enabled", False))
+    ar_from_block = _resolve_bool(regularized_attributes.get("enabled", False))
+    ar_vae_enabled = ar_from_train or ar_from_block
     pairwise_mode = regularized_attributes.get("pairwise", "all")
     subset_pairs = regularized_attributes.get("subset_pairs")
     raw_gamma = args.autoencoder_train.get("ar_vae_weight", regularized_attributes.get("gamma", 0.0))
