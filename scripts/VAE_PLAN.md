@@ -134,6 +134,10 @@ python scripts/train_vae.py -c config/vae_edente.json --num-workers 8
 python scripts/train_vae.py -c config/vae_edente.json --cache-rate 0.5 --num-workers 8
 ```
 
+### Adversarial
+
+- Ajuster la force GAN via `autoencoder_train.adv_weight` dans le JSON (par défaut `0.5`, agit sur les pertes générateur et discriminateur).
+
 ### Overrides
 
 ```bash

@@ -10,6 +10,7 @@ import torch
 from monai.config import print_config
 from monai.utils import set_determinism
 from PIL import Image
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from pti_ldm_vae.data import create_vae_inference_dataloader
@@ -99,6 +100,12 @@ def load_model(config: Any, checkpoint_path: str, device: torch.device) -> VAEMo
     return load_vae_model(config, checkpoint_path, device)
 
 
+def reconstruct_deterministic(autoencoder: VAEModel, images: torch.Tensor) -> torch.Tensor:
+    """Reconstruct images using deterministic latent mean (z_mu)."""
+    z_mu = autoencoder.encode_deterministic(images)
+    return autoencoder.decode_stage_2_outputs(z_mu)
+
+
 def save_results(idx: int, input_img: torch.Tensor, recon_img: torch.Tensor, out_tif: Path, out_png: Path) -> None:
     """Save a single result as TIF and PNG."""
     # Get numpy arrays (remove batch and channel dimensions)
@@ -126,7 +133,7 @@ def run_inference(
     for batch in tqdm(dataloader, desc="Processing"):
         with torch.no_grad():
             images = batch.to(device)
-            reconstruction, _, _ = autoencoder(images)
+            reconstruction = reconstruct_deterministic(autoencoder, images)
 
             images = images.cpu()
             reconstruction = reconstruction.cpu()

@@ -58,6 +58,7 @@ torchrun --nproc_per_node=4 scripts/train_vae.py \
 - `--cache-rate`: RAM caching 0.0-1.0 (default: 0.0)
 - `--seed`: Random seed (default: 42)
 - `--subset-size`: Use only N images for debugging
+- Adversarial strength: set `autoencoder_train.adv_weight` in the config (default `0.5`) to scale both generator and discriminator adversarial losses.
 
 **Outputs:**
 

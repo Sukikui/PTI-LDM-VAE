@@ -75,7 +75,7 @@ def load_attribute_mapping(config: Any) -> dict[str, int]:
 def encode_image(
     image_path: str, autoencoder: torch.nn.Module, transform: Compose, device: torch.device
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Encode a single image and return reconstructed output and latent means.
+    """Encode a single image and return reconstructed output and latent means (deterministic).
 
     Args:
         image_path: Path to input image.
@@ -89,7 +89,8 @@ def encode_image(
     image = transform(image_path)
     batch = image.unsqueeze(0).to(device)
     with torch.no_grad():
-        reconstruction, z_mu, _ = autoencoder(batch)
+        z_mu = autoencoder.encode_deterministic(batch)
+        reconstruction = autoencoder.decode_stage_2_outputs(z_mu)
 
     recon_np = reconstruction.squeeze(0).cpu().numpy()
 

@@ -102,6 +102,9 @@
     "recon_loss": "l1",
     "_recon_loss_comment": "Reconstruction loss type: 'l1' = sharper details, 'l2' = smoother results",
 
+    "adv_weight": 0.5,
+    "_adv_weight_comment": "Weight applied to adversarial generator/discriminator losses",
+
     "ar_vae_weight": "@regularized_attributes.gamma",
     "_ar_vae_weight_comment": "Weight applied to ∑_l L_{r_l,a_l} in total loss",
 

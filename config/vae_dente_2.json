@@ -1,8 +1,8 @@
 {
-  "_comment": "AR-VAE configuration for dente with edente AR",
+  "_comment": "VAE 2 configuration for dente",
 
   "data_base_dir": "./data/train_val",
-  "run_dir": "./runs/ar_vae_dente",
+  "run_dir": "./runs/vae_dente_2",
   "resume_ckpt": false,
   "checkpoint_dir": "",
 
@@ -27,7 +27,7 @@
     "latent_channels": "@latent_channels",
     "_latent_channels_comment": "Number of channels in latent space (affects compression ratio). Higher = more info preserved, less compression",
 
-    "channels": [64, 128, 256], // 32 64 128 128 (pour avoir du 2 par 2)
+    "channels": [32, 64, 128, 128],
     "_channels_comment": "Channel progression through encoder/decoder levels. Defines model capacity. Higher = more parameters, better quality, slower",
 
     "num_res_blocks": 2,
@@ -39,7 +39,7 @@
     "norm_eps": 1e-06,
     "_norm_eps_comment": "Epsilon for numerical stability in normalization",
 
-    "attention_levels": [false, false, false],
+    "attention_levels": [false, false, false, false],
     "_attention_levels_comment": "Enable self-attention at each level [level1, level2, level3]. true = slower but better quality, false = faster",
 
     "with_encoder_nonlocal_attn": true,
@@ -50,7 +50,7 @@
   },
 
   "regularized_attributes": {
-    "enabled": true,
+    "enabled": false,
     "_comment": "Unified configuration for AR-VAE attribute regularization",
 
     "attribute_file": "./data/train_val/metrics/attributes_edente.json",
@@ -104,7 +104,7 @@
     "recon_loss": "l1",
     "_recon_loss_comment": "Reconstruction loss type: 'l1' = sharper details, 'l2' = smoother results",
 
-    "adv_weight": 0.5,
+    "adv_weight": 2.0,
     "_adv_weight_comment": "Weight applied to adversarial generator/discriminator losses",
 
     "ar_vae_weight": "@regularized_attributes.gamma",
@@ -127,13 +127,13 @@
     "entity": null,
     "_entity_comment": "W&B username or team. If null, uses WANDB_ENTITY from .env file",
 
-    "name": "ar_vae_dente",
+    "name": "vae_dente_2",
     "_name_comment": "Run name. If null, auto-generated from run_dir",
 
-    "tags": ["VAE", "dente", "6-AR", "Spatial-AR"],
+    "tags": ["VAE", "dente", "32-64-128-128"],
     "_tags_comment": "Tags for organizing runs in W&B UI",
 
-    "notes": "AR-VAE training with attribute regularization on dente dataset",
+    "notes": "VAE 2 training on dente dataset",
     "_notes_comment": "Description of this training run"
   }
 }

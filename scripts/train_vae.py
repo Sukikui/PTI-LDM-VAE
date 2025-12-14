@@ -159,6 +159,7 @@ def init_wandb(args, rank):
             "kl_weight": args.autoencoder_train["kl_weight"],
             "perceptual_weight": args.autoencoder_train["perceptual_weight"],
             "recon_loss": args.autoencoder_train["recon_loss"],
+            "adv_weight": args.autoencoder_train["adv_weight"],
             "data_source": args.data_source,
             "augment": args.augment,
         },
@@ -838,7 +839,7 @@ def main() -> None:
     # Training parameters
     kl_weight = args.autoencoder_train["kl_weight"]
     perceptual_weight = args.autoencoder_train["perceptual_weight"]
-    adv_weight = 0.5
+    adv_weight = float(args.autoencoder_train["adv_weight"])
     max_epochs = args.autoencoder_train["max_epochs"]
     val_interval = args.autoencoder_train["val_interval"]
     log_triplet_every = 20
