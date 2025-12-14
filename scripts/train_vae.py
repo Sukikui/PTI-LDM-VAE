@@ -254,6 +254,9 @@ def _resolve_bool(value: Any) -> bool:
             return True
         if lowered in {"false", "0", "no", "n", ""}:
             return False
+        return False  # Unrecognized strings default to False to avoid accidental activation
+    if value is None:
+        return False
     return bool(value)
 
 
