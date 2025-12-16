@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 import torch
+import tifffile
 
 
 class LocalNormalizeByMask:
@@ -60,27 +61,17 @@ class ApplyLocalNormd:
         return data
 
 
-class ToTuple:
-    """Convert dictionary to tuple for dataloaders that return tuples.
+class TifReader:
+    """Callable transform to read TIF files with tifffile."""
 
-    Used for LDM dataloaders which return (image, condition_image) tuples.
-    """
-
-    def __init__(self, keys: list[str]) -> None:
-        """Initialize transform.
+    def __call__(self, path: str) -> np.ndarray:
+        """Load a TIF file and return a float32 numpy array.
 
         Args:
-            keys: List of dictionary keys in desired output order
-        """
-        self.keys = keys
-
-    def __call__(self, data: dict[str, Any]) -> tuple:
-        """Convert dictionary to tuple.
-
-        Args:
-            data: Dictionary containing data
+            path: Path to the TIF image.
 
         Returns:
-            Tuple of values in order specified by keys
+            Image data as float32 numpy array.
         """
-        return tuple(data[k] for k in self.keys)
+        img = tifffile.imread(path)
+        return img.astype(np.float32)

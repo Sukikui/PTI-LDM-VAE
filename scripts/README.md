@@ -7,9 +7,7 @@ Training, inference, and analysis scripts for the PTI-LDM-VAE project.
 | Script                    | Purpose                                                                         |
 | ------------------------- | ------------------------------------------------------------------------------- |
 | `train_vae.py`            | Train a Variational Autoencoder                                                 |
-| `train_ldm.py`            | Train a conditional Latent Diffusion Model                                      |
 | `inference_vae.py`        | Run VAE inference on images                                                     |
-| `inference_ldm.py`        | Generate images with trained LDM                                                |
 | `analyze_static.py`       | Generate static latent space visualizations (uses package analysis helpers)     |
 | `analyze_interactive.py`  | Interactive latent space exploration (UMAP/t-SNE, clic image, distance latente) |
 | `analyze_ar_channels.py`  | Interactive web viewer for AR-VAE attribute channels on a single image          |
@@ -59,48 +57,13 @@ torchrun --nproc_per_node=4 scripts/train_vae.py \
 - `--seed`: Random seed (default: 42)
 - `--subset-size`: Use only N images for debugging
 - Adversarial strength: set `autoencoder_train.adv_weight` in the config (default `0.5`) to scale both generator and discriminator adversarial losses.
+  To désactiver complètement la branche GAN (discriminateur + pertes adversariales), mettre `adv_enabled: false` dans `autoencoder_train`.
 
 **Outputs:**
 
 - `<run_dir>/trained_weights/` - Model checkpoints
 - `<run_dir>/tfevent/` - TensorBoard logs
 - `<run_dir>/validation_samples/` - Validation images
-
-______________________________________________________________________
-
-### train_ldm.py
-
-Train a conditional LDM for image-to-image translation.
-
-**Basic usage:**
-
-```bash
-python scripts/train_ldm.py \
-  -e config/environment_tif.json \
-  -c config/config_train_16g_cond.json \
-  -g 1
-```
-
-**Multi-GPU training:**
-
-```bash
-torchrun --nproc_per_node=4 scripts/train_ldm.py \
-  -e config/environment_tif.json \
-  -c config/config_train_16g_cond.json \
-  -g 4
-```
-
-**Requirements:**
-
-- Pretrained VAE checkpoint (specified in environment file)
-
-**Outputs:**
-
-- `<run_dir>/trained_weights/` - Model checkpoints
-- `<run_dir>/tfevent/` - TensorBoard logs
-- `<run_dir>/validation_samples/` - Generated images
-
-______________________________________________________________________
 
 ## Inference Scripts
 
@@ -135,40 +98,6 @@ python scripts/inference_vae.py \
 - `results_tif/` - Raw TIF files (original | reconstruction)
 - `results_png/` - PNG files normalized for visualization
 - `splits/vae_split.json` - Train/val file lists for this run (seed, split ratio, subset, val_dir)
-
-______________________________________________________________________
-
-### inference_ldm.py
-
-Generate images using a trained LDM with conditioning.
-
-**Usage:**
-
-```bash
-python scripts/inference_ldm.py \
-  --checkpoint path/to/checkpoint_epoch50.pth \
-  --output-dir inference_ldm_results/ \
-  --num-samples 10 \
-  --batch-size 1
-```
-
-**Arguments:**
-
-- `-e, --environment-file`: Path to environment JSON (default: `./config/environment_tif.json`)
-- `-c, --config-file`: Path to config JSON (default: `./config/config_train_16g_cond.json`)
-- `--checkpoint`: Path to LDM checkpoint (required)
-- `--output-dir`: Output directory (default: auto-generated)
-- `--num-samples`: Number of samples to generate (default: 10)
-- `--batch-size`: Batch size (default: 1)
-
-**Requirements:**
-
-- Pretrained VAE checkpoint (specified in environment file)
-
-**Outputs:**
-
-- `results_tif/` - Raw TIF files (condition | target | synthetic)
-- `results_png/` - PNG files normalized for visualization
 
 ______________________________________________________________________
 
@@ -317,7 +246,7 @@ data_base_dir/
 │   ├── image_001.tif
 │   ├── image_002.tif
 │   └── ...
-└── dente/           # Dental images (for LDM only)
+└── dente/           # Dental images (optional for analyses)
     ├── image_001.tif
     ├── image_002.tif
     └── ...
@@ -326,7 +255,6 @@ data_base_dir/
 **Notes:**
 
 - For VAE training, only `edente/` folder is required
-- For LDM training, both folders are required with matching filenames
 - Images must be TIF format, float32, single channel
 
 ______________________________________________________________________
@@ -372,27 +300,6 @@ python scripts/analyze_static.py \
   --method umap
 ```
 
-### 4. Train LDM
-
-Update `environment_tif.json` with VAE checkpoint path, then:
-
-```bash
-python scripts/train_ldm.py \
-  -e config/environment_tif.json \
-  -c config/config_train_16g_cond.json \
-  -g 1
-```
-
-### 5. Generate Images with LDM
-
-```bash
-python scripts/inference_ldm.py \
-  --checkpoint runs/ldm_experiment/trained_weights/checkpoint_epoch50.pth \
-  --num-samples 20
-```
-
-______________________________________________________________________
-
 ## Monitoring Training
 
 All training scripts log to TensorBoard:
@@ -433,15 +340,6 @@ Uses a single unified configuration file. See `config/README.md` for details.
   }
 }
 ```
-
-### LDM Training
-
-Uses two configuration files:
-
-- `environment_tif.json` - Paths and VAE checkpoint
-- `config_train_16g_cond.json` - Model architecture and hyperparameters
-
-______________________________________________________________________
 
 ## Notes
 

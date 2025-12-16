@@ -7,19 +7,9 @@ from typing import Any
 
 import torch
 from monai.data import DataLoader, Dataset, list_data_collate
-from monai.transforms import (
-    Compose,
-    EnsureChannelFirst,
-    EnsureChannelFirstd,
-    EnsureType,
-    EnsureTyped,
-    LoadImage,
-    LoadImaged,
-    Resize,
-    ResizeD,
-)
+from monai.transforms import Compose, EnsureChannelFirst, EnsureType, Lambda, LoadImage, Resize
 
-from .transforms import ApplyLocalNormd, LocalNormalizeByMask, ToTuple
+from .transforms import LocalNormalizeByMask, TifReader
 
 
 class IdentityTensorTransform:
@@ -60,35 +50,6 @@ class AlbumentationsSingleChannel:
         img_np = tensor.squeeze(0).numpy()
         augmented = self.albumentations_transform(image=img_np)
         return torch.from_numpy(augmented["image"][None, ...])
-
-
-class AlbumentationsPairedChannels:
-    """Apply an albumentations transform to paired tensors (target/condition)."""
-
-    def __init__(self, albumentations_transform: Callable):
-        """Initialize the paired transform wrapper.
-
-        Args:
-            albumentations_transform (Callable): Albumentations callable returning ``image`` and
-                ``condition_image`` keys.
-        """
-        self.albumentations_transform = albumentations_transform
-
-    def __call__(self, data: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Augment both images within the provided dict.
-
-        Args:
-            data (dict): Dictionary with ``image`` and ``condition_image`` tensors.
-
-        Returns:
-            dict: Dictionary containing the augmented tensors.
-        """
-        img = data["image"].squeeze(0).numpy()
-        cond = data["condition_image"].squeeze(0).numpy()
-        augmented = self.albumentations_transform(image=img, condition_image=cond)
-        data["image"] = torch.from_numpy(augmented["image"][None, ...])
-        data["condition_image"] = torch.from_numpy(augmented["condition_image"][None, ...])
-        return data
 
 
 class DatasetWithAttributes:
@@ -228,6 +189,38 @@ def _filter_attributes_for_paths(
     return attributes
 
 
+def build_vae_preprocess_transform(
+    patch_size: tuple[int, int],
+    *,
+    use_tif_reader: bool = False,
+) -> Compose:
+    """Create a reusable VAE preprocessing pipeline.
+
+    Args:
+        patch_size: Target spatial size (height, width).
+        use_tif_reader: When ``True``, use the custom TIF reader (analysis); otherwise rely on MONAI's LoadImage.
+
+    Returns:
+        Composed MONAI transform for loading, resizing, normalizing, and typing images.
+    """
+    if use_tif_reader:
+        loader = Lambda(func=TifReader())
+        channel_first = EnsureChannelFirst(channel_dim="no_channel")
+    else:
+        loader = LoadImage(image_only=True)
+        channel_first = EnsureChannelFirst()
+
+    return Compose(
+        [
+            loader,
+            channel_first,
+            Resize(patch_size),
+            LocalNormalizeByMask(),
+            EnsureType(dtype=torch.float32),
+        ]
+    )
+
+
 def _print_dataset_stats(
     train_ds: Dataset,
     val_ds: Dataset,
@@ -302,15 +295,7 @@ def create_vae_inference_dataloader(
     if num_samples is not None:
         tif_paths = tif_paths[:num_samples]
 
-    transforms = Compose(
-        [
-            LoadImage(image_only=True),
-            EnsureChannelFirst(),
-            Resize(patch_size),
-            LocalNormalizeByMask(),
-            EnsureType(dtype=torch.float32),
-        ]
-    )
+    transforms = build_vae_preprocess_transform(patch_size)
     dataset = Dataset(data=tif_paths, transform=transforms)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
     return dataloader, tif_paths
@@ -594,173 +579,3 @@ def create_vae_dataloaders(
         _print_dataset_stats(train_ds, val_ds, data_source, train_split, val_dir)
 
     return train_loader, val_loader, train_paths, val_paths
-
-
-def create_ldm_dataloaders(
-    data_base_dir: str,
-    batch_size: int,
-    patch_size: tuple[int, int],
-    augment: bool = False,
-    rank: int = 0,
-    target: str = "edente",
-    condition: str = "dente",
-    train_split: float = 0.9,
-    num_workers: int = 4,
-    seed: int | None = 42,
-    subset_size: int | None = None,
-    cache_rate: float = 0.0,
-    distributed: bool = False,
-    world_size: int = 1,
-    **kwargs,
-) -> tuple[DataLoader, DataLoader]:
-    """Create train and validation dataloaders for LDM training.
-
-    Loads paired images from target and condition folders.
-
-    Args:
-        data_base_dir: Base directory containing image subfolders
-        batch_size: Batch size for dataloaders
-        patch_size: Target image size (H, W)
-        augment: Whether to apply data augmentation
-        rank: Rank of current process (for printing info on rank 0)
-        target: Target image folder (default: "edente")
-        condition: Condition image folder (default: "dente")
-        train_split: Train/val split ratio (default: 0.9 = 90% train, 10% val)
-        num_workers: Number of worker processes for data loading (default: 4)
-        seed: Random seed for reproducibility (default: 42, None = no seed)
-        subset_size: Use only first N pairs for debugging (default: None = all)
-        cache_rate: Fraction of dataset to cache in RAM, 0.0 to 1.0 (default: 0.0)
-        distributed: Use DistributedSampler for DDP training (default: False)
-        world_size: Number of processes for DDP (default: 1)
-        **kwargs: Additional arguments (for compatibility)
-
-    Returns:
-        Tuple of (train_loader, val_loader)
-        Each batch returns (target_image, condition_image) tuple
-
-    Raises:
-        ValueError: If train_split is not in (0, 1) or cache_rate is not in [0, 1]
-        FileNotFoundError: If no .tif images are found in target or condition folders
-    """
-    # Validate parameters
-    if not 0 < train_split < 1:
-        raise ValueError(f"train_split must be in (0, 1), got {train_split}")
-    if not 0.0 <= cache_rate <= 1.0:
-        raise ValueError(f"cache_rate must be in [0, 1], got {cache_rate}")
-
-    dir_target = os.path.join(data_base_dir, target)
-    dir_condition = os.path.join(data_base_dir, condition)
-
-    tif_paths_target = sorted(glob(os.path.join(dir_target, "*.tif")))
-    tif_paths_condition = sorted(glob(os.path.join(dir_condition, "*.tif")))
-
-    if len(tif_paths_target) == 0 or len(tif_paths_condition) == 0:
-        raise FileNotFoundError(f"Aucune image trouvée dans {dir_target} ou {dir_condition}")
-    if len(tif_paths_target) != len(tif_paths_condition):
-        raise ValueError(
-            f"Les dossiers {target} et {condition} doivent contenir le même nombre d'images. "
-            f"Trouvé: {len(tif_paths_target)} vs {len(tif_paths_condition)}"
-        )
-
-    # Create paired data
-    paired_data = [
-        {"image": t, "condition_image": c} for t, c in zip(tif_paths_target, tif_paths_condition, strict=True)
-    ]
-
-    # Apply subset for debugging
-    if subset_size is not None:
-        paired_data = paired_data[:subset_size]
-        if rank == 0:
-            print(f"⚠️  Using subset of {subset_size} pairs for debugging")
-
-    # Shuffle with seed for reproducibility
-    if seed is not None:
-        random.seed(seed)
-        paired_data_copy = paired_data.copy()
-        random.shuffle(paired_data_copy)
-        paired_data = paired_data_copy
-
-    # Split train/val
-    split_idx = int(train_split * len(paired_data))
-    train_data = paired_data[:split_idx]
-    val_data = paired_data[split_idx:]
-
-    # Handle augmentation
-    if augment:
-        from .augmentation import get_albumentations_transform
-
-        albumentations_transform = get_albumentations_transform()
-        aug_monai = AlbumentationsPairedChannels(albumentations_transform)
-    else:
-        aug_monai = IdentityTensorTransform()
-
-    # Define transforms (ALWAYS resize to patch_size)
-    transform_list = [
-        LoadImaged(keys=["image", "condition_image"]),
-        EnsureChannelFirstd(keys=["image", "condition_image"]),
-        ResizeD(keys=["image", "condition_image"], spatial_size=patch_size),  # Always resize
-        EnsureTyped(keys=["image", "condition_image"], dtype=torch.float32),
-        ApplyLocalNormd(keys=["image", "condition_image"]),
-        aug_monai,  # Apply augmentation if enabled
-        ToTuple(keys=["image", "condition_image"]),
-    ]
-
-    transforms = Compose(transform_list)
-
-    # Create datasets with optional caching
-    if cache_rate > 0:
-        from monai.data import CacheDataset
-
-        train_ds = CacheDataset(data=train_data, transform=transforms, cache_rate=cache_rate, num_workers=num_workers)
-        val_ds = CacheDataset(data=val_data, transform=transforms, cache_rate=1.0, num_workers=num_workers)
-        if rank == 0:
-            print(f"🚀 Caching {cache_rate * 100:.0f}% of training pairs in RAM")
-    else:
-        train_ds = Dataset(data=train_data, transform=transforms)
-        val_ds = Dataset(data=val_data, transform=transforms)
-
-    # Create dataloaders with optional distributed sampling
-    if distributed:
-        from torch.utils.data.distributed import DistributedSampler
-
-        train_sampler = DistributedSampler(
-            train_ds, num_replicas=world_size, rank=rank, shuffle=True, seed=seed if seed is not None else 0
-        )
-        val_sampler = DistributedSampler(
-            val_ds, num_replicas=world_size, rank=rank, shuffle=False, seed=seed if seed is not None else 0
-        )
-
-        train_loader = DataLoader(
-            train_ds, batch_size=batch_size, sampler=train_sampler, num_workers=num_workers, pin_memory=True
-        )
-        val_loader = DataLoader(
-            val_ds, batch_size=batch_size, sampler=val_sampler, num_workers=num_workers, pin_memory=True
-        )
-
-        if rank == 0:
-            print(f"⚡ Using DistributedSampler for {world_size} GPUs")
-    else:
-        train_loader = DataLoader(
-            train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True
-        )
-        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-
-    # Print dataset statistics
-    if rank == 0:
-        sample = next(iter(train_loader))
-        total = len(train_ds) + len(val_ds)
-
-        print(f"\n{'=' * 60}")
-        print("LDM Dataset Statistics")
-        print(f"{'=' * 60}")
-        print(f"Target: {target} | Condition: {condition}")
-        print(f"Train pairs: {len(train_ds)}")
-        print(f"Val pairs: {len(val_ds)}")
-        print(f"Total: {total}")
-        print(f"Split ratio: {len(train_ds) / total:.1%} / {len(val_ds) / total:.1%}")
-        print("\nImage shapes:")
-        print(f"  Target: {sample[0].shape}")
-        print(f"  Condition: {sample[1].shape}")
-        print(f"{'=' * 60}\n")
-
-    return train_loader, val_loader

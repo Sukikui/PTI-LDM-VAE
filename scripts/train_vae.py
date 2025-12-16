@@ -260,28 +260,32 @@ def _resolve_bool(value: Any) -> bool:
     return bool(value)
 
 
-def create_models(args, device, ddp_bool, rank):
+def create_models(args, device, ddp_bool, rank, adv_enabled: bool):
     """Create VAE and discriminator models."""
     autoencoder = VAEModel.from_config(args.autoencoder_def).to(device)
 
-    discriminator = PatchDiscriminator(
-        spatial_dims=args.spatial_dims,
-        num_layers_d=3,
-        channels=32,
-        in_channels=1,
-        out_channels=1,
-        norm="INSTANCE",
-    ).to(device)
+    discriminator = None
+    if adv_enabled:
+        discriminator = PatchDiscriminator(
+            spatial_dims=args.spatial_dims,
+            num_layers_d=3,
+            channels=32,
+            in_channels=1,
+            out_channels=1,
+            norm="INSTANCE",
+        ).to(device)
+
+        if ddp_bool:
+            discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
+            discriminator = DDP(discriminator, device_ids=[device], output_device=rank, find_unused_parameters=True)
 
     if ddp_bool:
-        discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
         autoencoder = DDP(autoencoder, device_ids=[device], output_device=rank, find_unused_parameters=True)
-        discriminator = DDP(discriminator, device_ids=[device], output_device=rank, find_unused_parameters=True)
 
     return autoencoder, discriminator
 
 
-def create_losses_and_optimizers(args, autoencoder, discriminator, device, world_size, rank):
+def create_losses_and_optimizers(args, autoencoder, discriminator, device, world_size, rank, adv_enabled: bool):
     """Create loss functions and optimizers."""
     if args.autoencoder_train.get("recon_loss") == "l2":
         intensity_loss = MSELoss()
@@ -292,11 +296,13 @@ def create_losses_and_optimizers(args, autoencoder, discriminator, device, world
         if rank == 0:
             print("Using L1 loss")
 
-    adv_loss = PatchAdversarialLoss(criterion="least_squares")
+    adv_loss = PatchAdversarialLoss(criterion="least_squares") if adv_enabled else None
     loss_perceptual = PerceptualLoss(spatial_dims=args.spatial_dims, network_type="squeeze").to(device)
 
     optimizer_g = torch.optim.Adam(autoencoder.parameters(), lr=args.autoencoder_train["lr"] * world_size)
-    optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=args.autoencoder_train["lr"] * world_size)
+    optimizer_d = None
+    if adv_enabled:
+        optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=args.autoencoder_train["lr"] * world_size)
 
     return intensity_loss, adv_loss, loss_perceptual, optimizer_g, optimizer_d
 
@@ -312,13 +318,16 @@ def load_checkpoint(args, autoencoder, discriminator, optimizer_g, optimizer_d, 
 
             if ddp_bool:
                 autoencoder.module.load_state_dict(checkpoint["autoencoder_state_dict"])
-                discriminator.module.load_state_dict(checkpoint["discriminator_state_dict"])
+                if discriminator is not None and "discriminator_state_dict" in checkpoint:
+                    discriminator.module.load_state_dict(checkpoint["discriminator_state_dict"])
             else:
                 autoencoder.load_state_dict(checkpoint["autoencoder_state_dict"])
-                discriminator.load_state_dict(checkpoint["discriminator_state_dict"])
+                if discriminator is not None and "discriminator_state_dict" in checkpoint:
+                    discriminator.load_state_dict(checkpoint["discriminator_state_dict"])
 
             optimizer_g.load_state_dict(checkpoint["optimizer_g_state_dict"])
-            optimizer_d.load_state_dict(checkpoint["optimizer_d_state_dict"])
+            if optimizer_d is not None and "optimizer_d_state_dict" in checkpoint:
+                optimizer_d.load_state_dict(checkpoint["optimizer_d_state_dict"])
 
             start_epoch = checkpoint["epoch"] + 1
             best_val_loss = checkpoint["best_val_loss"]
@@ -355,10 +364,12 @@ def train_epoch(
     pairwise_mode,
     subset_pairs,
     ar_gamma,
+    adv_enabled,
 ):
     """Train for one epoch."""
     autoencoder.train()
-    discriminator.train()
+    if discriminator is not None:
+        discriminator.train()
 
     if ddp_bool:
         train_loader.sampler.set_epoch(epoch)
@@ -386,8 +397,7 @@ def train_epoch(
         images_rgb = ensure_three_channels(images.float())
         p_loss = loss_perceptual(recon_rgb, images_rgb)
         generator_loss = torch.tensor(0.0, device=device)
-
-        if epoch > 5:  # warmup epochs
+        if adv_enabled and epoch > 5:
             logits_fake = discriminator(reconstruction.contiguous().float())[-1]
             generator_loss = adv_loss(logits_fake, target_is_real=True, for_discriminator=False)
 
@@ -437,7 +447,7 @@ def train_epoch(
 
         # Train discriminator
         discriminator_loss = torch.tensor(0.0, device=device)
-        if epoch > 5:
+        if adv_enabled and epoch > 5 and optimizer_d is not None:
             optimizer_d.zero_grad(set_to_none=True)
             logits_fake = discriminator(reconstruction.contiguous().detach())[-1]
             loss_d_fake = adv_loss(logits_fake, target_is_real=False, for_discriminator=True)
@@ -455,8 +465,8 @@ def train_epoch(
                 "train/recon_loss": intensity_loss(reconstruction, images).item(),
                 "train/kl_loss": kl_loss.item(),
                 "train/perceptual_loss": p_loss.item(),
-                "train/adv_gen_loss": (adv_weight * generator_loss).item() if epoch > 5 else 0.0,
-                "train/adv_disc_loss": (adv_weight * discriminator_loss).item() if epoch > 5 else 0.0,
+                "train/adv_gen_loss": (adv_weight * generator_loss).item() if adv_enabled and epoch > 5 else 0.0,
+                "train/adv_disc_loss": (adv_weight * discriminator_loss).item() if adv_enabled and epoch > 5 else 0.0,
                 "train/step": total_step,
                 "train/loss_total": loss_g.item(),
             }
@@ -508,6 +518,7 @@ def validate(
     regularized_attributes,
     pairwise_mode,
     subset_pairs,
+    adv_enabled,
 ):
     """Run validation."""
     autoencoder.eval()
@@ -551,7 +562,7 @@ def validate(
 
             adv_gen_loss = torch.tensor(0.0, device=device)
             adv_disc_loss = torch.tensor(0.0, device=device)
-            if discriminator is not None and epoch > 5:
+            if discriminator is not None and adv_enabled and epoch > 5:
                 logits_fake = discriminator(reconstruction.contiguous().float())[-1]
                 adv_gen_loss = adv_loss(logits_fake, target_is_real=True, for_discriminator=False)
                 logits_fake_detached = discriminator(reconstruction.contiguous().detach())[-1]
@@ -641,8 +652,8 @@ def validate(
             "val/recon_loss": val_recon_epoch_loss,  # intensity only
             "val/kl_loss": val_kl_epoch_loss,
             "val/perceptual_loss": val_perc_epoch_loss,
-            "val/adv_gen_loss": adv_weight * val_adv_gen_epoch_loss,
-            "val/adv_disc_loss": val_adv_disc_epoch_loss,
+            "val/adv_gen_loss": adv_weight * val_adv_gen_epoch_loss if adv_enabled else 0.0,
+            "val/adv_disc_loss": val_adv_disc_epoch_loss if adv_enabled else 0.0,
             "val/loss_total": val_loss_total,
             "epoch": epoch,
         }
@@ -681,14 +692,16 @@ def save_checkpoint(
 
     # Save last
     trained_g_path_last = os.path.join(args.model_dir, "autoencoder_last.pt")
-    trained_d_path_last = os.path.join(args.model_dir, "discriminator_last.pt")
-
     if ddp_bool:
         torch.save(autoencoder.module.state_dict(), trained_g_path_last)
-        torch.save(discriminator.module.state_dict(), trained_d_path_last)
+        if discriminator is not None:
+            trained_d_path_last = os.path.join(args.model_dir, "discriminator_last.pt")
+            torch.save(discriminator.module.state_dict(), trained_d_path_last)
     else:
         torch.save(autoencoder.state_dict(), trained_g_path_last)
-        torch.save(discriminator.state_dict(), trained_d_path_last)
+        if discriminator is not None:
+            trained_d_path_last = os.path.join(args.model_dir, "discriminator_last.pt")
+            torch.save(discriminator.state_dict(), trained_d_path_last)
 
     return best_epoch_saved
 
@@ -719,7 +732,6 @@ def save_best_checkpoint(
         files_to_remove = [
             os.path.join(args.model_dir, f"checkpoint_epoch{best_epoch_saved}.pth"),
             os.path.join(args.model_dir, f"autoencoder_epoch{best_epoch_saved}.pth"),
-            os.path.join(args.model_dir, f"discriminator_epoch{best_epoch_saved}.pth"),
         ]
         for f in files_to_remove:
             if os.path.exists(f):
@@ -728,19 +740,21 @@ def save_best_checkpoint(
     # Save new best
     if ddp_bool:
         torch.save(autoencoder.module.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
-        torch.save(discriminator.module.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+        if discriminator is not None:
+            torch.save(discriminator.module.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
     else:
         torch.save(autoencoder.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
-        torch.save(discriminator.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+        if discriminator is not None:
+            torch.save(discriminator.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
 
     checkpoint_path = os.path.join(args.model_dir, f"checkpoint_epoch{epoch}.pth")
     torch.save(
         {
             "epoch": epoch,
             "autoencoder_state_dict": autoencoder.module.state_dict() if ddp_bool else autoencoder.state_dict(),
-            "discriminator_state_dict": discriminator.module.state_dict() if ddp_bool else discriminator.state_dict(),
+            "discriminator_state_dict": discriminator.module.state_dict() if ddp_bool and discriminator is not None else (discriminator.state_dict() if discriminator is not None else None),
             "optimizer_g_state_dict": optimizer_g.state_dict(),
-            "optimizer_d_state_dict": optimizer_d.state_dict(),
+            "optimizer_d_state_dict": optimizer_d.state_dict() if optimizer_d is not None else None,
             "best_val_loss": val_loss,
             "total_step": total_step,
         },
@@ -825,8 +839,10 @@ def main() -> None:
             json.dump(split_payload, split_file, indent=2)
         print(f"[INFO] Saved train/val split to {split_path}")
 
+    adv_enabled = bool(args.autoencoder_train.get("adv_enabled", True))
+
     # Create models
-    autoencoder, discriminator = create_models(args, device, ddp_bool, rank)
+    autoencoder, discriminator = create_models(args, device, ddp_bool, rank, adv_enabled)
 
     if rank == 0:
         model_to_print = autoencoder.module if ddp_bool else autoencoder
@@ -836,7 +852,7 @@ def main() -> None:
 
     # Create losses and optimizers
     intensity_loss, adv_loss, loss_perceptual, optimizer_g, optimizer_d = create_losses_and_optimizers(
-        args, autoencoder, discriminator, device, world_size, rank
+        args, autoencoder, discriminator, device, world_size, rank, adv_enabled
     )
 
     # Load checkpoint
@@ -890,6 +906,7 @@ def main() -> None:
             pairwise_mode,
             subset_pairs,
             ar_gamma,
+            adv_enabled,
         )
 
         # Validation
@@ -919,6 +936,7 @@ def main() -> None:
                 regularized_attributes,
                 pairwise_mode,
                 subset_pairs,
+                adv_enabled,
             )
 
             if rank == 0:

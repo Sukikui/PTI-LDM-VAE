@@ -150,6 +150,18 @@ class VAEModel(nn.Module):
         """
         return self.autoencoder.decode_stage_2_outputs(z)
 
+    def reconstruct_deterministic(self, x: torch.Tensor) -> torch.Tensor:
+        """Reconstruct inputs using deterministic latent mean.
+
+        Args:
+            x: Input tensor to reconstruct.
+
+        Returns:
+            Reconstructed tensor decoded from ``z_mu``.
+        """
+        z_mu = self.encode_deterministic(x)
+        return self.decode_stage_2_outputs(z_mu)
+
     def load_state_dict(self, state_dict: dict, strict: bool = True) -> None:
         """Load state dict into the autoencoder."""
         self.autoencoder.load_state_dict(state_dict, strict=strict)

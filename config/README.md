@@ -137,6 +137,7 @@ ______________________________________________________________________
 | ------------------- | ----- | ------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `perceptual_weight` | float | 1.0     | Weight for VGG perceptual loss | **Higher** = better texture quality<br>**Lower** = faster convergence<br>**0.0** = disable perceptual loss                  |
 | `adv_weight`        | float | 0.5     | Weight for adversarial losses  | Scales both generator and discriminator adversarial losses. Increase for stronger GAN signal, decrease if GAN destabilizes. |
+| `adv_enabled`       | bool  | true    | Enable adversarial branch      | Set to **false** to disable the discriminator and GAN losses entirely.                                                       |
 
 **Typical range:** 0.5 to 2.0
 

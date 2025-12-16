@@ -27,7 +27,7 @@
     "latent_channels": "@latent_channels",
     "_latent_channels_comment": "Number of channels in latent space (affects compression ratio). Higher = more info preserved, less compression",
 
-    "channels": [64, 128, 256], // 32 64 128 128 (pour avoir du 2 par 2)
+    "channels": [64, 128, 256],
     "_channels_comment": "Channel progression through encoder/decoder levels. Defines model capacity. Higher = more parameters, better quality, slower",
 
     "num_res_blocks": 2,
@@ -103,6 +103,9 @@
 
     "recon_loss": "l1",
     "_recon_loss_comment": "Reconstruction loss type: 'l1' = sharper details, 'l2' = smoother results",
+
+    "adv_enabled": true,
+    "_adv_enabled_comment": "Enable adversarial branch (generator + discriminator). Set to false to disable GAN losses",
 
     "adv_weight": 0.5,
     "_adv_weight_comment": "Weight applied to adversarial generator/discriminator losses",

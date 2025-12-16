@@ -26,7 +26,7 @@ def get_albumentations_transform():
         >>> # For single image
         >>> augmented = transform(image=image)
         >>>
-        >>> # For paired images (LDM)
+        >>> # For paired images (e.g., conditioned tasks)
         >>> augmented = transform(image=image, condition_image=condition)
     """
     return A.Compose(

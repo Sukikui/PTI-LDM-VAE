@@ -2,8 +2,6 @@ import argparse
 
 import numpy as np
 import plotly.graph_objects as go
-import umap
-from sklearn.decomposition import PCA
 
 from pti_ldm_vae.analysis import LatentSpaceAnalyzer
 from pti_ldm_vae.analysis.common import (
@@ -236,29 +234,26 @@ def main() -> None:
     print(f"Computing {args.method.upper()} projection...")
     print("=" * 60)
 
+    projections = []
+    proj_dente: np.ndarray | None = None
     if args.method == "umap":
-        # Fit PCA on the first group
-        pca = PCA(n_components=50, random_state=args.seed)
-        latent_edente_pca = pca.fit_transform(latent_edente)
-        print(f"✅ PCA fitted on edente: {latent_edente_pca.shape}")
-
-        # Fit UMAP on the PCA-transformed first group
-        umap_model = umap.UMAP(
+        proj_edente, umap_model = analyzer.reduce_dimensionality_umap(
+            latent_edente,
             n_neighbors=args.n_neighbors,
             min_dist=args.min_dist,
             random_state=args.seed,
-            n_components=2,
-        ).fit(latent_edente_pca)
-        proj_edente = umap_model.embedding_
-        print(f"✅ UMAP fitted on edente: {proj_edente.shape}")
+            pca_components=min(len(latent_edente), 50),
+        )
+        projections.append((proj_edente, ids_edente, "o", "edente"))
 
-        projections = [(proj_edente, ids_edente, "o", "edente")]
-
-        # Transform dente using fitted UMAP model if provided
         if args.folder_dente:
-            latent_dente_pca = pca.transform(latent_dente)
-            proj_dente = umap_model.transform(latent_dente_pca)
-            print(f"✅ UMAP transformed dente: {proj_dente.shape}")
+            # Align dente projections using the fitted UMAP model
+            latent_dente_pca = umap_model.transform(latent_dente) if hasattr(umap_model, "transform") else None
+            proj_dente = (
+                latent_dente_pca
+                if latent_dente_pca is not None
+                else analyzer.reduce_dimensionality_umap(latent_dente, n_neighbors=args.n_neighbors)[0]
+            )
             projections.append((proj_dente, ids_dente, "o_filled", "dente"))
 
         output_filename = "umap_projection.png"
@@ -267,18 +262,17 @@ def main() -> None:
     else:  # tsne
         print("(This may take a few minutes...)")
 
-        # Combine all data for joint t-SNE
         combined_latent = np.concatenate([latent_edente, latent_dente]) if args.folder_dente else latent_edente
-
         tsne_combined = analyzer.reduce_dimensionality_tsne(
-            combined_latent, perplexity=args.perplexity, random_state=args.seed
+            combined_latent,
+            perplexity=args.perplexity,
+            random_state=args.seed,
+            pca_components=min(len(combined_latent), 50),
         )
-        print(f"✅ t-SNE computed: {tsne_combined.shape}")
 
-        # Split back into groups
         split_idx = len(latent_edente)
         proj_edente = tsne_combined[:split_idx]
-        projections = [(proj_edente, ids_edente, "o", "edente")]
+        projections.append((proj_edente, ids_edente, "o", "edente"))
 
         if args.folder_dente:
             proj_dente = tsne_combined[split_idx:]
@@ -290,8 +284,6 @@ def main() -> None:
     # Create title with legend symbols
     if args.folder_dente:
         title = f"{title} (● dente, ○ edente)"
-    else:
-        title = title
 
     # Create colormap if needed
     patient_to_id, patient_to_color = {}, {}

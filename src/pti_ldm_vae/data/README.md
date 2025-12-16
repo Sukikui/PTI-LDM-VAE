@@ -1,16 +1,15 @@
 # Data Module
 
-Dataloader utilities for VAE and LDM training.
+Dataloader utilities for VAE training and evaluation.
 
 ## Overview
 
 - **`create_vae_dataloaders`**: Single-image dataloaders for VAE training
 - **`create_vae_inference_dataloader`**: Single dataloader for VAE inference/evaluation
-- **`create_ldm_dataloaders`**: Paired-image dataloaders for LDM training
+- **`build_vae_preprocess_transform`**: Shared preprocessing pipeline (load/resize/normalize) reusable across scripts
 - **Transform classes**: Custom preprocessing (normalization, masking)
 
-Note: `create_vae_dataloaders` returns both loaders and file paths `(train_loader, val_loader, train_paths, val_paths)`. Use `_` to ignore paths if you only need the loaders.
-The VAE loaders now always apply an explicit collate function (`collate_with_attributes` for AR-VAE or MONAI's `list_data_collate` otherwise) to guarantee that batches come back as tensors/dicts instead of plain Python lists across Torch/MONAI versions; le code d'entraînement consolide aussi les batches reçus en listes (rare sur certains couples PyTorch/MONAI) avant l'envoi sur GPU/CPU.
+Note: `create_vae_dataloaders` returns both loaders and file paths `(train_loader, val_loader, train_paths, val_paths)`. Use `_` to ignore paths if you only need the loaders. The VAE loaders now always apply an explicit collate function (`collate_with_attributes` for AR-VAE or MONAI's `list_data_collate` otherwise) to guarantee that batches come back as tensors/dicts instead of plain Python lists across Torch/MONAI versions; le code d'entraînement consolide aussi les batches reçus en listes (rare sur certains couples PyTorch/MONAI) avant l'envoi sur GPU/CPU.
 
 ______________________________________________________________________
 
@@ -60,30 +59,6 @@ dataloader, image_paths = create_vae_inference_dataloader(
 )
 ```
 
-### LDM Dataloaders
-
-```python
-from pti_ldm_vae.data import create_ldm_dataloaders
-
-# Basic usage
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/path/to/data",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",       # target folder
-    condition="dente",     # condition folder
-    rank=0
-)
-
-# Iterate over batches
-for target_images, condition_images in train_loader:
-    # target_images shape: [B, 1, H, W]
-    # condition_images shape: [B, 1, H, W]
-    pass
-```
-
-______________________________________________________________________
-
 ## Data Directory Structure
 
 ```
@@ -97,8 +72,7 @@ data_base_dir/
     ├── image_002.tif
     └── ...
 ```
-
-**Important**: For LDM, folders must contain matching filenames.
+Images can be stored in `edente/`, `dente/`, or both; VAE training can target a single source or mix both datasets.
 
 ______________________________________________________________________
 
@@ -121,13 +95,6 @@ ______________________________________________________________________
 | `data_source`  | str      | "edente" | Which images: "edente", "dente", or "both"           |
 | `val_dir`      | str/None | None     | Separate validation directory                        |
 | `return_paths` | bool     | False    | (Implicit) Returns train/val paths alongside loaders |
-
-### LDM-specific
-
-| Parameter   | Type | Default  | Description            |
-| ----------- | ---- | -------- | ---------------------- |
-| `target`    | str  | "edente" | Target image folder    |
-| `condition` | str  | "dente"  | Condition image folder |
 
 ### Performance Parameters
 
@@ -196,7 +163,7 @@ ______________________________________________________________________
 ## Custom Transforms
 
 ```python
-from pti_ldm_vae.data import LocalNormalizeByMask, ApplyLocalNormd, ToTuple
+from pti_ldm_vae.data import LocalNormalizeByMask, ApplyLocalNormd
 
 # Single image transform
 normalizer = LocalNormalizeByMask()
@@ -206,10 +173,10 @@ normalized_image = normalizer(image)
 dict_normalizer = ApplyLocalNormd(keys=["image", "condition"])
 data = dict_normalizer({"image": img1, "condition": img2})
 
-# Convert dict to tuple (for LDM dataloaders)
-to_tuple = ToTuple(keys=["image", "condition"])
-image_tuple = to_tuple({"image": img1, "condition": img2})
-# Returns: (img1, img2)
+# Full preprocessing pipeline (load -> channel-first -> resize -> normalize)
+from pti_ldm_vae.data import build_vae_preprocess_transform
+
+transform = build_vae_preprocess_transform(patch_size=(256, 256))
 ```
 
 ______________________________________________________________________
@@ -236,19 +203,6 @@ train_loader, val_loader = create_vae_dataloaders(
 )
 ```
 
-### LDM Training
-
-```python
-# Train edente→dente (default)
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente"
-)
-```
-
 ### Multi-GPU Training (DDP)
 
 ```python
@@ -257,19 +211,6 @@ train_loader, val_loader = create_vae_dataloaders(
     data_base_dir="/data/my_project",
     batch_size=8,
     patch_size=(256, 256),
-    rank=rank,
-    distributed=True,
-    world_size=world_size,
-    seed=42
-)
-
-# LDM with DDP
-train_loader, val_loader = create_ldm_dataloaders(
-    data_base_dir="/data/my_project",
-    batch_size=8,
-    patch_size=(256, 256),
-    target="edente",
-    condition="dente",
     rank=rank,
     distributed=True,
     world_size=world_size,

@@ -1,25 +1,17 @@
-import json
 import random
 from pathlib import Path
 
 import numpy as np
-import tifffile
 import torch
 from monai.config import print_config
-from monai.transforms import Compose, EnsureChannelFirst, EnsureType, Resize
+
+from monai.transforms import Compose
 
 from pti_ldm_vae.analysis import LatentSpaceAnalyzer, load_image_paths
-from pti_ldm_vae.data.transforms import LocalNormalizeByMask
+from pti_ldm_vae.data.dataloaders import build_vae_preprocess_transform
 from pti_ldm_vae.models import VAEModel
-
-
-class TifReader:
-    """Custom transform to read TIF files using the tifffile library."""
-
-    def __call__(self, path: str) -> np.ndarray:
-        """Load a TIF file and return it as a numpy array."""
-        img = tifffile.imread(path)
-        return img.astype(np.float32)
+from pti_ldm_vae.utils.vae_loader import load_vae_config as load_vae_config_util
+from pti_ldm_vae.utils.vae_loader import load_vae_model as load_vae_model_util
 
 
 def set_seed(seed: int) -> None:
@@ -55,81 +47,27 @@ def setup_device_and_output(output_dir: str) -> tuple[torch.device, Path]:
     return device, output_path
 
 
-def resolve_config_references(config: dict, root_config: dict) -> dict:
-    """Resolve @variable references in configuration dictionary.
-
-    Args:
-        config: Configuration dictionary that may contain references
-        root_config: Root configuration dictionary containing reference values
-
-    Returns:
-        Configuration with all references resolved
-    """
-    resolved = {}
-    for key, value in config.items():
-        if isinstance(value, str) and value.startswith("@"):
-            ref_key = value[1:]
-            resolved[key] = root_config.get(ref_key, value)
-        elif isinstance(value, str) and value.startswith("$@"):
-            ref_key = value[2:]
-            resolved[key] = root_config.get(ref_key, value)
-        elif isinstance(value, dict):
-            resolved[key] = resolve_config_references(value, root_config)
-        elif isinstance(value, list):
-            resolved[key] = [
-                root_config.get(item[1:], item) if isinstance(item, str) and item.startswith("@") else item
-                for item in value
-            ]
-        else:
-            resolved[key] = value
-    return resolved
-
-
 def load_vae_model(config_file: str, vae_weights: str, device: torch.device) -> VAEModel:
-    """Load VAE model from config and weights.
-
-    This function manually resolves @variable references in the configuration file
-    (e.g., @spatial_dims, @image_channels) by replacing them with their actual values.
+    """Load VAE model from config and weights using shared loaders.
 
     Args:
-        config_file: Path to config JSON file
-        vae_weights: Path to VAE weights file
-        device: Torch device to load model on
+        config_file: Path to config JSON file.
+        vae_weights: Path to VAE weights file.
+        device: Torch device to load model on.
 
     Returns:
-        Loaded VAE model in eval mode
+        Loaded VAE model in eval mode.
     """
-    with open(config_file) as f:
-        config_dict = json.load(f)
-
-    autoencoder_config = resolve_config_references(config_dict["autoencoder_def"], config_dict)
-
-    vae = VAEModel.from_config(autoencoder_config).to(device)
-    vae.load_state_dict(torch.load(vae_weights, map_location=device))
+    config = load_vae_config_util(config_file)
+    vae = load_vae_model_util(config, vae_weights, device)
     vae.eval()
     print(f"Loaded VAE from {vae_weights}")
-
     return vae
 
 
 def create_transforms(patch_size: tuple[int, int]) -> Compose:
-    """Create MONAI transforms pipeline for image preprocessing.
-
-    Args:
-        patch_size: Image patch size (H, W)
-
-    Returns:
-        Composed transform pipeline
-    """
-    return Compose(
-        [
-            TifReader(),
-            EnsureChannelFirst(channel_dim="no_channel"),
-            Resize(patch_size),
-            LocalNormalizeByMask(),
-            EnsureType(dtype=torch.float32),
-        ]
-    )
+    """Create MONAI transforms pipeline for image preprocessing."""
+    return build_vae_preprocess_transform(patch_size, use_tif_reader=True)
 
 
 def encode_single_image(analyzer: LatentSpaceAnalyzer, image_path: str) -> tuple[np.ndarray, str]:

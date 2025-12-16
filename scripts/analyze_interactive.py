@@ -7,11 +7,9 @@ from typing import Any
 import dash
 import numpy as np
 import plotly.graph_objects as go
-import umap
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 from PIL import Image
-from sklearn.decomposition import PCA
 
 from pti_ldm_vae.analysis import LatentSpaceAnalyzer, latent_distance, latent_distance_cross
 from pti_ldm_vae.analysis.common import (
@@ -279,30 +277,22 @@ def main() -> None:
     print(f"Computing {args.method.upper()} projection...")
     print("=" * 60)
 
-    if args.method == "umap":
-        # Fit PCA on the first group
-        pca = PCA(n_components=50, random_state=args.seed)
-        latent_edente_pca = pca.fit_transform(latent_edente)
-        print(f"✅ PCA fitted on edente: {latent_edente_pca.shape}")
+    projections = []
+    image_paths_list: list[list[str]] = []
 
-        # Fit UMAP on the PCA-transformed first group
-        umap_model = umap.UMAP(
+    if args.method == "umap":
+        proj_edente, umap_model = analyzer.reduce_dimensionality_umap(
+            latent_edente,
             n_neighbors=args.n_neighbors,
             min_dist=args.min_dist,
             random_state=args.seed,
-            n_components=2,
-        ).fit(latent_edente_pca)
-        proj_edente = umap_model.embedding_
-        print(f"✅ UMAP fitted on edente: {proj_edente.shape}")
-
-        projections = [(proj_edente, ids_edente, "o", "edente")]
-        image_paths_list = [paths_edente]
+            pca_components=min(len(latent_edente), 50),
+        )
+        projections.append((proj_edente, ids_edente, "o", "edente"))
+        image_paths_list.append(paths_edente)
 
         if args.folder_dente:
-            # Transform the second group using the same PCA and UMAP models
-            latent_dente_pca = pca.transform(latent_dente)
-            proj_dente = umap_model.transform(latent_dente_pca)
-            print(f"✅ UMAP transformed dente: {proj_dente.shape}")
+            proj_dente = umap_model.transform(latent_dente)
             projections.append((proj_dente, ids_dente, "o", "dente"))
             image_paths_list.append(paths_dente)
 
@@ -310,14 +300,17 @@ def main() -> None:
         combined_latent = np.concatenate([latent_edente, latent_dente]) if args.folder_dente else latent_edente
         print("(This may take a few minutes...)")
         tsne_combined = analyzer.reduce_dimensionality_tsne(
-            combined_latent, perplexity=args.perplexity, random_state=args.seed
+            combined_latent,
+            perplexity=args.perplexity,
+            random_state=args.seed,
+            pca_components=min(len(combined_latent), 50),
         )
         print(f"✅ t-SNE computed: {tsne_combined.shape}")
 
         split_idx = len(latent_edente)
         proj_edente = tsne_combined[:split_idx]
-        projections = [(proj_edente, ids_edente, "o", "edente")]
-        image_paths_list = [paths_edente]
+        projections.append((proj_edente, ids_edente, "o", "edente"))
+        image_paths_list.append(paths_edente)
 
         if args.folder_dente:
             proj_dente = tsne_combined[split_idx:]

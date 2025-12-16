@@ -1,12 +1,12 @@
 {
-  "_comment": "AR-VAE configuration for edente + dente training",
+  "_comment": "VAE 2 configuration for dente",
 
   "data_base_dir": "./data/train_val",
-  "run_dir": "./runs/ar_vae_both",
+  "run_dir": "./runs/vae_dente_no_adv",
   "resume_ckpt": false,
   "checkpoint_dir": "",
 
-  "data_source": "both",
+  "data_source": "dente",
   "_data_source_comment": "Which images to load: 'edente', 'dente', or 'both'",
 
   "train_split": 0.9,
@@ -19,6 +19,7 @@
   "spatial_dims": 2,
   "image_channels": 1,
   "latent_channels": 4,
+
   "autoencoder_def": {
     "spatial_dims": "@spatial_dims",
     "in_channels": "@image_channels",
@@ -26,19 +27,19 @@
     "latent_channels": "@latent_channels",
     "_latent_channels_comment": "Number of channels in latent space (affects compression ratio). Higher = more info preserved, less compression",
 
-    "channels": [64, 128, 256],
+    "channels": [32, 64, 128, 128],
     "_channels_comment": "Channel progression through encoder/decoder levels. Defines model capacity. Higher = more parameters, better quality, slower",
 
     "num_res_blocks": 2,
     "_num_res_blocks_comment": "Number of residual blocks per level. More blocks = better quality but slower training",
 
-    "norm_num_groups": 32,
+    "norm_num_groups": 16,
     "_norm_num_groups_comment": "Number of groups for GroupNorm. Must divide channel counts evenly (e.g., 32 divides 64, 128, 256)",
 
     "norm_eps": 1e-06,
     "_norm_eps_comment": "Epsilon for numerical stability in normalization",
 
-    "attention_levels": [false, false, false],
+    "attention_levels": [false, false, false, false],
     "_attention_levels_comment": "Enable self-attention at each level [level1, level2, level3]. true = slower but better quality, false = faster",
 
     "with_encoder_nonlocal_attn": true,
@@ -49,14 +50,11 @@
   },
 
   "regularized_attributes": {
-    "enabled": true,
+    "enabled": false,
     "_comment": "Unified configuration for AR-VAE attribute regularization",
 
-    "attribute_file": {
-      "edente": "./data/metrics/attributes_edente.json",
-      "dente": "./data/metrics/attributes_dente.json"
-    },
-    "_attribute_file_comment": "Per-source JSON containing a_l(x) for each image. For a single source, this can be a single string path.",
+    "attribute_file": "./data/train_val/metrics/attributes_edente.json",
+    "_attribute_file_comment": "JSON containing a_l(x) for each image in the dente dataset",
 
     "gamma": 0.5,
     "_gamma_comment": "Weight of attribute regularization ∑_l L_{r_l,a_l}",
@@ -100,13 +98,16 @@
     "perceptual_weight": 1.0,
     "_perceptual_weight_comment": "Weight for VGG perceptual loss. Higher = better texture quality, lower = faster convergence",
 
-    "kl_weight": 1e-6,
+    "kl_weight": 1e-3,
     "_kl_weight_comment": "Weight for KL divergence. Controls latent regularization. Too high = blurry reconstructions, too low = unstructured latent. Range: 1e-6 to 1e-5",
 
     "recon_loss": "l1",
     "_recon_loss_comment": "Reconstruction loss type: 'l1' = sharper details, 'l2' = smoother results",
 
-    "adv_weight": 0.5,
+    "adv_enabled": false,
+    "_adv_enabled_comment": "Enable adversarial branch (generator + discriminator). Set to false to disable GAN losses",
+
+    "adv_weight": 3.0,
     "_adv_weight_comment": "Weight applied to adversarial generator/discriminator losses",
 
     "ar_vae_weight": "@regularized_attributes.gamma",
@@ -129,13 +130,13 @@
     "entity": null,
     "_entity_comment": "W&B username or team. If null, uses WANDB_ENTITY from .env file",
 
-    "name": "ar_vae_both",
+    "name": "vae_dente_no_adv",
     "_name_comment": "Run name. If null, auto-generated from run_dir",
 
-    "tags": ["VAE", "both", "6-AR", "Spatial-AR"],
+    "tags": ["VAE", "dente", "32-64-128-128", "no_adv"],
     "_tags_comment": "Tags for organizing runs in W&B UI",
 
-    "notes": "AR-VAE training with attribute regularization for both modalities",
+    "notes": "VAE 2 training on dente dataset",
     "_notes_comment": "Description of this training run"
   }
 }

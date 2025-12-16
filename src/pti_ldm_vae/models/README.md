@@ -1,14 +1,13 @@
 # Models Module
 
-This module provides simple wrappers around MONAI models.
-The wrappers simplify model instantiation from configuration dictionaries while maintaining full compatibility
-with existing checkpoints.
+This module provides simple wrappers around MONAI models for VAE workflows. Wrappers simplify model instantiation from
+configuration dictionaries while maintaining compatibility with existing checkpoints.
 
 ## Overview
 
 - **`VAEModel`**: Wrapper around `monai.networks.nets.AutoencoderKL`
-- **`DiffusionUNet`**: Wrapper around `monai.networks.nets.DiffusionModelUNet`
-- **`create_condition_projector`**: Helper function to create conditioning projection layers
+- **`DiffusionUNet`**: Wrapper around `monai.networks.nets.DiffusionModelUNet` (kept for potential future use)
+- **`create_condition_projector`**: Helper function to create conditioning projection layers (kept with UNet)
 
 ______________________________________________________________________
 

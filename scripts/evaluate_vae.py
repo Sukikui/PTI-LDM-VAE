@@ -71,18 +71,7 @@ def setup_output_dir(args: argparse.Namespace) -> Path:
 def create_dataloader(
     input_dir: str, patch_size: tuple[int, int], batch_size: int, num_samples: int | None, num_workers: int
 ) -> tuple[torch.utils.data.DataLoader, list[str]]:
-    """Create dataloader for evaluation using shared VAE inference pipeline.
-
-    Args:
-        input_dir: Folder containing .tif images.
-        patch_size: Resize target (H, W).
-        batch_size: Batch size.
-        num_samples: Optional limit on samples.
-        num_workers: Number of dataloader workers.
-
-    Returns:
-        Tuple of dataloader and list of image paths.
-    """
+    """Create dataloader for evaluation using shared VAE inference pipeline."""
     return create_vae_inference_dataloader(
         input_dir=input_dir,
         patch_size=patch_size,
