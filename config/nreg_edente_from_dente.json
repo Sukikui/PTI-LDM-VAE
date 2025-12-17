@@ -32,7 +32,7 @@
   "regression_train": {
     "batch_size": 8,
     "lr": 0.0001,
-    "max_epochs": 50,
+    "max_epochs": 100,
     "val_interval": 1,
     "target_norm": "standard",
     "loss": "mse"
