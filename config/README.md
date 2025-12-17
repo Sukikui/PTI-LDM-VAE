@@ -22,7 +22,6 @@ ______________________________________________________________________
 | `data_source`  | string      | "edente" | Which images to load: **"edente"**, **"dente"**, or **"both"** |
 | `train_split`  | float       | 0.9      | Train/val split ratio (0.9 = 90% train, 10% val)               |
 | `val_dir`      | string/null | null     | Separate validation directory (overrides `train_split` if set) |
-| `augment`      | boolean     | false    | Enable data augmentation                                       |
 | `spatial_dims` | int         | 2        | Image dimensionality: **2** for 2D, **3** for 3D               |
 
 ______________________________________________________________________
@@ -137,7 +136,7 @@ ______________________________________________________________________
 | ------------------- | ----- | ------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `perceptual_weight` | float | 1.0     | Weight for VGG perceptual loss | **Higher** = better texture quality<br>**Lower** = faster convergence<br>**0.0** = disable perceptual loss                  |
 | `adv_weight`        | float | 0.5     | Weight for adversarial losses  | Scales both generator and discriminator adversarial losses. Increase for stronger GAN signal, decrease if GAN destabilizes. |
-| `adv_enabled`       | bool  | true    | Enable adversarial branch      | Set to **false** to disable the discriminator and GAN losses entirely.                                                       |
+| `adv_enabled`       | bool  | true    | Enable adversarial branch      | Set to **false** to disable the discriminator and GAN losses entirely.                                                      |
 
 **Typical range:** 0.5 to 2.0
 

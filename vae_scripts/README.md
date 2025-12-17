@@ -24,13 +24,13 @@ Train a VAE for image reconstruction.
 **Basic usage:**
 
 ```bash
-python scripts/train_vae.py -c config/ar_vae_edente.json
+python vae_scripts/train_vae.py -c config/ar_vae_edente.json
 ```
 
 **With overrides:**
 
 ```bash
-python scripts/train_vae.py \
+python vae_scripts/train_vae.py \
   -c config/ar_vae_edente.json \
   --batch-size 16 \
   --lr 5e-5 \
@@ -40,7 +40,7 @@ python scripts/train_vae.py \
 **Multi-GPU training:**
 
 ```bash
-torchrun --nproc_per_node=4 scripts/train_vae.py \
+torchrun --nproc_per_node=4 vae_scripts/train_vae.py \
   -c config/ar_vae_edente.json \
   -g 4
 ```
@@ -74,7 +74,7 @@ Run inference on images using a trained VAE.
 **Usage:**
 
 ```bash
-python scripts/inference_vae.py \
+python vae_scripts/inference_vae.py \
   --config-file config/ar_vae_edente.json \
   --checkpoint path/to/checkpoint_epoch73.pth \
   --input-dir path/to/images/ \
@@ -92,6 +92,7 @@ python scripts/inference_vae.py \
 - `--num-workers`: Dataloader workers (default: 4)
 - `--num-samples`: Number of samples to process (default: all)
 - `--batch-size`: Batch size (default: 8)
+- `--seed`: Random seed for deterministic preprocessing (default: 42)
 
 **Outputs:**
 
@@ -108,7 +109,7 @@ Compute geometric attributes (height and width) for paired edente/dente masks. E
 **Usage:**
 
 ```bash
-python scripts/compute_mask_metrics.py \
+python vae_scripts/compute_mask_metrics.py \
   --edente-dir data/edente \
   --dente-dir data/dente \
   --output-edente data/attributes_edente.json \
@@ -143,7 +144,7 @@ Shared helpers for analysis live in `pti_ldm_vae.analysis.common` and are import
 Interactive Dash viewer showing input, reconstruction, and each AR attribute channel.
 
 ```bash
-python scripts/analyze_ar_channels.py \
+python vae_scripts/analyze_ar_channels.py \
   --config-file config/ar_vae_edente.json \
   --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --image-path data/edente/sample.tif \
@@ -157,7 +158,7 @@ Generate static high-resolution latent space visualizations (UMAP or t-SNE).
 **Basic usage (UMAP):**
 
 ```bash
-python scripts/analyze_static.py \
+python vae_scripts/analyze_static.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
@@ -170,7 +171,7 @@ python scripts/analyze_static.py \
 **t-SNE example:**
 
 ```bash
-python scripts/analyze_static.py \
+python vae_scripts/analyze_static.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
@@ -215,7 +216,7 @@ Interactive latent space exploration with web server and image viewer.
 **Usage:**
 
 ```bash
-python scripts/analyze_interactive.py \
+python vae_scripts/analyze_interactive.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \
@@ -264,13 +265,13 @@ ______________________________________________________________________
 ### 1. Train VAE
 
 ```bash
-python scripts/train_vae.py -c config/ar_vae_edente.json
+python vae_scripts/train_vae.py -c config/ar_vae_edente.json
 ```
 
 ### 2. Test VAE Inference
 
 ```bash
-python scripts/inference_vae.py \
+python vae_scripts/inference_vae.py \
   --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --input-dir data/edente/ \
   --num-samples 10
@@ -279,7 +280,7 @@ python scripts/inference_vae.py \
 ### 3. Evaluate VAE Metrics (PSNR/SSIM)
 
 ```bash
-python scripts/evaluate_vae.py \
+python vae_scripts/evaluate_vae.py \
   --checkpoint runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --config-file config/ar_vae_edente.json \
   --input-dir data/edente/ \
@@ -287,12 +288,12 @@ python scripts/evaluate_vae.py \
 ```
 
 Outputs: `evals/<config_name>/metrics.json` with mean/std for intensity recon loss, KL, perceptual, total loss, PSNR, SSIM, plus the list of evaluated files.
-Option: `--num-workers` to control dataloader workers (default: 4).
+Options: `--num-workers` to control dataloader workers (default: 4); `--seed` to reproduce deterministic preprocessing (default: 42).
 
 ### 3. Visualize Latent Space
 
 ```bash
-python scripts/analyze_static.py \
+python vae_scripts/analyze_static.py \
   --vae-weights runs/vae_baseline/trained_weights/autoencoder_epoch73.pth \
   --config-file config/ar_vae_edente.json \
   --folder-edente data/edente/ \

@@ -22,7 +22,7 @@ ______________________________________________________________________
 
 ```bash
 # Test edente (100 images, 5 epochs)
-python scripts/train_vae.py \
+python vae_scripts/train_vae.py \
   -c config/vae_config.json \
   --subset-size 100 \
   --max-epochs 5
@@ -83,12 +83,12 @@ Identique mais avec `"data_source": "both"` et `"run_dir": "./runs/vae_both"`
 
 ```bash
 # Single GPU
-python scripts/train_vae.py -c config/vae_edente.json
-python scripts/train_vae.py -c config/vae_dente.json
-python scripts/train_vae.py -c config/vae_both.json
+python vae_scripts/train_vae.py -c config/vae_edente.json
+python vae_scripts/train_vae.py -c config/vae_dente.json
+python vae_scripts/train_vae.py -c config/vae_both.json
 
 # Multi-GPU (4 GPUs)
-torchrun --nproc_per_node=4 scripts/train_vae.py -c config/vae_edente.json -g 4
+torchrun --nproc_per_node=4 vae_scripts/train_vae.py -c config/vae_edente.json -g 4
 ```
 
 ### Durée estimée (1 GPU RTX 3090)
@@ -106,7 +106,7 @@ torchrun --nproc_per_node=4 scripts/train_vae.py -c config/vae_edente.json -g 4
 - Lancement :
 
 ```bash
-python scripts/train_vae.py -c config/ar_vae_both.json
+python vae_scripts/train_vae.py -c config/ar_vae_both.json
 ```
 
 - Pairwise par défaut : `all`. Pour sous-échantillonner, définir `pairwise: "subset"` et `subset_pairs` (entier) dans `regularized_attributes`.
@@ -125,13 +125,13 @@ ______________________________________________________________________
 
 ```bash
 # Caching (50% du dataset en RAM)
-python scripts/train_vae.py -c config/vae_edente.json --cache-rate 0.5
+python vae_scripts/train_vae.py -c config/vae_edente.json --cache-rate 0.5
 
 # Plus de workers pour le data loading
-python scripts/train_vae.py -c config/vae_edente.json --num-workers 8
+python vae_scripts/train_vae.py -c config/vae_edente.json --num-workers 8
 
 # Combiner
-python scripts/train_vae.py -c config/vae_edente.json --cache-rate 0.5 --num-workers 8
+python vae_scripts/train_vae.py -c config/vae_edente.json --cache-rate 0.5 --num-workers 8
 ```
 
 ### Adversarial
@@ -142,7 +142,7 @@ python scripts/train_vae.py -c config/vae_edente.json --cache-rate 0.5 --num-wor
 
 ```bash
 # Changer batch size, learning rate, epochs
-python scripts/train_vae.py \
+python vae_scripts/train_vae.py \
   -c config/vae_edente.json \
   --batch-size 16 \
   --lr 5e-5 \
@@ -214,7 +214,7 @@ ______________________________________________________________________
 ### Inférence
 
 ```bash
-python scripts/inference_vae.py \
+python vae_scripts/inference_vae.py \
   --checkpoint runs/vae_edente/trained_weights/autoencoder_epoch73.pth \
   --input-dir data/edente/ \
   --num-samples 20
@@ -224,7 +224,7 @@ python scripts/inference_vae.py \
 
 ```bash
 # UMAP
-python scripts/analyze_static.py \
+python vae_scripts/analyze_static.py \
   --vae-weights runs/vae_both/trained_weights/autoencoder_epoch73.pth \
   --config-file config/vae_both.json \
   --folder-edente data/edente/ \

@@ -162,7 +162,6 @@ def init_wandb(args, rank):
             "recon_loss": args.autoencoder_train["recon_loss"],
             "adv_weight": args.autoencoder_train["adv_weight"],
             "data_source": args.data_source,
-            "augment": args.augment,
         },
     )
 
@@ -741,7 +740,9 @@ def save_best_checkpoint(
     if ddp_bool:
         torch.save(autoencoder.module.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
         if discriminator is not None:
-            torch.save(discriminator.module.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth"))
+            torch.save(
+                discriminator.module.state_dict(), os.path.join(args.model_dir, f"discriminator_epoch{epoch}.pth")
+            )
     else:
         torch.save(autoencoder.state_dict(), os.path.join(args.model_dir, f"autoencoder_epoch{epoch}.pth"))
         if discriminator is not None:
@@ -752,7 +753,9 @@ def save_best_checkpoint(
         {
             "epoch": epoch,
             "autoencoder_state_dict": autoencoder.module.state_dict() if ddp_bool else autoencoder.state_dict(),
-            "discriminator_state_dict": discriminator.module.state_dict() if ddp_bool and discriminator is not None else (discriminator.state_dict() if discriminator is not None else None),
+            "discriminator_state_dict": discriminator.module.state_dict()
+            if ddp_bool and discriminator is not None
+            else (discriminator.state_dict() if discriminator is not None else None),
             "optimizer_g_state_dict": optimizer_g.state_dict(),
             "optimizer_d_state_dict": optimizer_d.state_dict() if optimizer_d is not None else None,
             "best_val_loss": val_loss,
@@ -809,7 +812,6 @@ def main() -> None:
         data_base_dir=args.data_base_dir,
         batch_size=args.autoencoder_train["batch_size"],
         patch_size=tuple(args.autoencoder_train["patch_size"]),
-        augment=args.augment,
         rank=rank,
         data_source=args.data_source,
         train_split=args.train_split,

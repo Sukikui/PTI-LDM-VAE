@@ -361,7 +361,7 @@ def main() -> None:
             {%app_entry%}
             <footer>
                 {%config%}
-                {%scripts%}
+                {%vae_scripts%}
                 {%renderer%}
             </footer>
         </body>

@@ -26,4 +26,4 @@ Guide concis des métriques loggées pendant l'entraînement/validation du VAE.
 
 - Architecture : `spatial_dims`, `latent_channels`, `channels`, `num_res_blocks`, attention, etc.
 - Entraînement : `batch_size`, `lr`, `max_epochs`, `kl_weight`, `perceptual_weight`, `recon_loss`, `ar_vae_weight`.
-- Données : `data_source`, `augment`, `patch_size`, `train_split`, `cache_rate`.
+- Données : `data_source`, `patch_size`, `train_split`, `cache_rate`.

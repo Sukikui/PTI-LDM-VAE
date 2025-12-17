@@ -2,83 +2,35 @@ import argparse
 import json
 import logging
 import sys
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
-from monai.config import print_config
 from monai.losses import PerceptualLoss
-from monai.utils import set_determinism
 from tqdm import tqdm
 
-from pti_ldm_vae.data import create_vae_inference_dataloader
 from pti_ldm_vae.models import VAEModel
 from pti_ldm_vae.models.losses import compute_kl_loss
 from pti_ldm_vae.utils import ensure_three_channels
+from pti_ldm_vae.utils.cli_common import (
+    add_shared_io_args,
+    build_inference_dataloader,
+    init_device_and_seed,
+    load_config_and_model,
+    resolve_eval_output_dir,
+)
 from pti_ldm_vae.utils.eval_metrics import compute_psnr, compute_ssim, serialize_args
-from pti_ldm_vae.utils.vae_loader import default_eval_output_dir, load_vae_config, load_vae_model
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments for VAE evaluation.
 
     Returns:
-        Parsed arguments namespace.
+        argparse.Namespace: Parsed arguments namespace.
     """
     parser = argparse.ArgumentParser(description="Evaluate a trained VAE on a test set.")
-    parser.add_argument("-c", "--config-file", required=True, help="Config json file")
-    parser.add_argument(
-        "--checkpoint", type=str, required=True, help="Path to checkpoint (e.g., checkpoint_epoch73.pth)"
-    )
-    parser.add_argument("--input-dir", type=str, required=True, help="Directory containing input TIF images")
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default=None,
-        help="Output directory for metrics (default: evals/<config_name>/)",
-    )
-    parser.add_argument(
-        "--num-workers",
-        type=int,
-        default=4,
-        help="Number of dataloader workers (default: 4)",
-    )
-    parser.add_argument("--num-samples", type=int, default=None, help="Number of samples to process (default: all)")
-    parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
+    add_shared_io_args(parser, output_help="Output directory for metrics (default: evals/<config_name>/)")
     return parser.parse_args()
-
-
-def setup_output_dir(args: argparse.Namespace) -> Path:
-    """Create the output directory used to store evaluation artifacts.
-
-    Args:
-        args (argparse.Namespace): Parsed CLI arguments.
-
-    Returns:
-        Path: Concrete path where metrics and metadata are written.
-    """
-    if args.output_dir is not None:
-        output_dir = Path(args.output_dir)
-    else:
-        output_dir = default_eval_output_dir(args.config_file)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
-
-
-def create_dataloader(
-    input_dir: str, patch_size: tuple[int, int], batch_size: int, num_samples: int | None, num_workers: int
-) -> tuple[torch.utils.data.DataLoader, list[str]]:
-    """Create dataloader for evaluation using shared VAE inference pipeline."""
-    return create_vae_inference_dataloader(
-        input_dir=input_dir,
-        patch_size=patch_size,
-        batch_size=batch_size,
-        num_samples=num_samples,
-        num_workers=num_workers,
-    )
 
 
 def select_intensity_loss(config: Any) -> torch.nn.Module:
@@ -181,26 +133,19 @@ def save_metrics(output_dir: Path, summary: dict[str, float], image_paths: list[
 
 def main() -> None:
     args = parse_args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    device = init_device_and_seed(args.seed)
 
-    print_config()
-    set_determinism(args.seed)
+    config, autoencoder = load_config_and_model(args.config_file, args.checkpoint, device)
+    output_dir = resolve_eval_output_dir(args.config_file, args.output_dir)
 
-    config = load_vae_config(args.config_file)
-    output_dir = setup_output_dir(args)
-    patch_size = tuple(config.autoencoder_train["patch_size"])
-
-    dataloader, image_paths = create_dataloader(
+    dataloader, image_paths = build_inference_dataloader(
         input_dir=args.input_dir,
-        patch_size=patch_size,
+        config=config,
         batch_size=args.batch_size,
         num_samples=args.num_samples,
         num_workers=args.num_workers,
     )
     print(f"[INFO] Found {len(image_paths)} images in {args.input_dir}")
-
-    autoencoder = load_vae_model(config, args.checkpoint, device)
     intensity_loss_fn = select_intensity_loss(config)
     perceptual_loss_fn = PerceptualLoss(spatial_dims=config.spatial_dims, network_type="squeeze").to(device)
 

@@ -72,6 +72,7 @@ data_base_dir/
     ├── image_002.tif
     └── ...
 ```
+
 Images can be stored in `edente/`, `dente/`, or both; VAE training can target a single source or mix both datasets.
 
 ______________________________________________________________________
@@ -85,7 +86,6 @@ ______________________________________________________________________
 | `data_base_dir` | str             | required | Base directory containing image subfolders |
 | `batch_size`    | int             | required | Batch size for dataloaders                 |
 | `patch_size`    | tuple[int, int] | required | Target image size (H, W)                   |
-| `augment`       | bool            | False    | Enable data augmentation                   |
 | `rank`          | int             | 0        | Process rank (for multi-GPU training)      |
 
 ### VAE-specific
@@ -118,8 +118,7 @@ All images go through these transforms:
 2. **Channel**: Ensure channel-first format [C, H, W]
 3. **Resize**: Resize to `patch_size`
 4. **Normalize**: Local normalization by mask (excludes background)
-5. **Augmentation**: Apply augmentations (if enabled)
-6. **Type**: Convert to float32 tensor
+5. **Type**: Convert to float32 tensor
 
 ### Local Normalization
 
