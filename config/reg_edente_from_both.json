@@ -50,6 +50,6 @@
   "wandb": {
     "enabled": true,
     "name": "reg_edente_from_both",
-    "tags": ["vae_both_no_adv", "standard-norm"]
+    "tags": ["vae_both_no_adv"]
   }
 }
