@@ -53,6 +53,15 @@ ______________________________________________________________________
     "normalize_attributes": null
   },
 
+  "evaluation": {
+    "data_base_dir": "./data/test/",
+    "attributes_path": "./data/test/metrics/attributes_edente.json",
+    "data_source": "edente",
+    "patch_size": [256, 256],
+    "num_workers": 4,
+    "normalize_attributes": null
+  },
+
   "vae": {
     "config_file": "./config/ar_vae_edente.json",
     "checkpoint": "./runs/vae_baseline/trained_weights/autoencoder_epoch73.pth",
@@ -88,6 +97,7 @@ Champs clés :
 
 - `run_dir` : répertoire racine pour checkpoints/éval/inférence.
 - `data.*` : chemins, splits, patch size et workers alignés avec les configs VAE.
+- `evaluation.*` : jeu/targets d’éval ou test par défaut pour les scripts d’évaluation (chemins + source).
 - `targets` : liste des métriques à prédire et ordre de sortie du MLP.
 - `vae` : config+checkpoint du VAE gelé, `latent_agg` reste `flatten`.
 - `regression_train.target_norm` : `standard` pour centrer/réduire les cibles (stats sauvegardées), `none` pour brut.
@@ -103,7 +113,7 @@ ______________________________________________________________________
 - Charge config, dataloaders via `create_regression_dataloaders`, VAE gelé via `load_vae_model`, tête `VAELatentRegressor`.
 - Affiche un summary du modèle (latente aplatie, hidden_dims, #params) puis une barre de progression par époque.
 - Si `wandb.enabled=true`, log `train/loss_<type>`, `val/loss_<type>` (mse ou huber selon la config), `val/mae*`, `val/mse*`, `best/val_loss_<type>` par époque.
-- Sauvegardes : meilleurs/derniers poids de la tête (+ stats de normalisation si activées), éventuellement W&B run.
+- Sauvegardes : seuls `head_last.pth` et `head_best.pth` (+ stats de normalisation si activées), éventuellement W&B run.
 - Exemple :
 
 ```bash
@@ -115,16 +125,15 @@ python reg_scripts/train_regression.py \
 
 ### Évaluer (`reg_scripts/evaluate_regression.py`)
 
-- Args : `--config-file`, `--checkpoint` (tête), `--input-dir`, `--batch-size`, `--num-workers`, `--num-samples`, `--output-dir`, `--seed`.
-- Recharge VAE gelé + tête, dataloader identique; calcule MAE/MSE par cible et agrégés; écrit `metrics.json` dans `output-dir` (par défaut `<run_dir>/eval/`).
+- Args : `--config-file`, `--checkpoint` (tête), `--input-dir` (optionnel, par défaut `evaluation.data_base_dir`), `--attributes-path` (optionnel, par défaut `evaluation.attributes_path`), `--batch-size`, `--num-workers`, `--num-samples`, `--output-dir`, `--seed`.
+- Recharge VAE gelé + tête, dataloader identique; calcule MAE/MSE par cible et agrégés; écrit `metrics.json` dans `output-dir` (par défaut `<run_dir>/eval/`). Les chemins d’images/cibles d’éval sont lus dans la section `evaluation` de la config si non spécifiés en CLI.
 - Exemple :
 
 ```bash
 python reg_scripts/evaluate_regression.py \
   -c config/reg_edente_from_dente.json \
-  --checkpoint runs/reg_head/trained_weights/head_epoch20.pth \
-  --input-dir data/edente/ \
-  --output-dir evals/reg_head
+  --checkpoint runs/reg_head/trained_weights/head_best.pth \
+  --output-dir evals/reg_head_test
 ```
 
 ### Inférer (`reg_scripts/inference_regression.py`)
@@ -136,7 +145,7 @@ python reg_scripts/evaluate_regression.py \
 ```bash
 python reg_scripts/inference_regression.py \
   -c config/reg_edente_from_dente.json \
-  --checkpoint runs/reg_head/trained_weights/head_epoch20.pth \
+  --checkpoint runs/reg_head/trained_weights/head_best.pth \
   --input-dir data/edente/ \
   --output-dir results/regression_preds
 ```
@@ -151,7 +160,7 @@ Par défaut (si `run_dir` est défini dans la config), les artefacts sont regrou
 runs/reg_head_edente/
 ├── trained_weights/
 │   ├── head_last.pth
-│   ├── head_epoch20.pth          # meilleur modèle sauvegardé
+│   ├── head_best.pth             # meilleur modèle sauvegardé
 │   └── target_norm_stats.json    # si target_norm=standard
 ├── eval/
 │   └── metrics.json              # MAE/MSE par cible + global + args + fichiers évalués

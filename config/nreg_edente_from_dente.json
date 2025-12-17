@@ -15,6 +15,15 @@
     "normalize_attributes": null
   },
 
+  "evaluation": {
+    "data_base_dir": "./data/test/",
+    "attributes_path": "./data/test/metrics/attributes_edente.json",
+    "data_source": "dente",
+    "patch_size": [256, 256],
+    "num_workers": 4,
+    "normalize_attributes": null
+  },
+
   "vae": {
     "config_file": "./config/vae_dente_no_adv.json",
     "checkpoint": "./runs/vae_dente_no_adv/trained_weights/autoencoder_epoch97.pth",

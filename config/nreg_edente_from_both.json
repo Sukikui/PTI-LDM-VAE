@@ -1,5 +1,5 @@
 {
-  "run_dir": "./runs/reg_edente_from_dente",
+  "run_dir": "./runs/nreg_edente_from_both",
 
   "data": {
     "data_base_dir": "./data/train_val/",
@@ -25,8 +25,8 @@
   },
 
   "vae": {
-    "config_file": "./config/vae_dente_no_adv.json",
-    "checkpoint": "./runs/vae_dente_no_adv/trained_weights/autoencoder_epoch97.pth",
+    "config_file": "./config/vae_both_no_adv.json",
+    "checkpoint": "./runs/vae_both_no_adv/trained_weights/autoencoder_epoch97.pth",
     "latent_agg": "flatten"
   },
 
@@ -41,15 +41,15 @@
   "regression_train": {
     "batch_size": 8,
     "lr": 0.0001,
-    "max_epochs": 50,
+    "max_epochs": 100,
     "val_interval": 1,
-    "target_norm": "none",
+    "target_norm": "standard",
     "loss": "mse"
   },
 
   "wandb": {
     "enabled": true,
-    "name": "reg_edente_from_dente",
-    "tags": ["vae_dente_no_adv"]
+    "name": "nreg_edente_from_both",
+    "tags": ["vae_both_no_adv", "standard-norm"]
   }
 }

@@ -20,8 +20,9 @@ from pti_ldm_vae.utils.regression_utils import (
     init_regression_wandb,
     load_regression_checkpoint,
     log_regression_epoch,
+    maybe_save_best_regression_checkpoint,
     regression_loss_key,
-    save_regression_checkpoint,
+    save_last_regression_checkpoint,
     save_target_normalizer,
     train_one_epoch,
     validate_one_epoch,
@@ -184,6 +185,7 @@ def main() -> None:
     max_epochs = train_cfg["max_epochs"]
     val_interval = train_cfg.get("val_interval", 1)
     best_val = float("inf")
+    best_checkpoint_path: Path | None = None
     epoch_iter = tqdm(range(1, max_epochs + 1), desc="Epochs", unit="epoch")
     for epoch in epoch_iter:
         train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device, normalizer)
@@ -191,10 +193,15 @@ def main() -> None:
 
         if epoch % val_interval == 0 or epoch == max_epochs:
             val_loss, metrics = validate_one_epoch(model, val_loader, loss_fn, device, targets, normalizer)
-            if val_loss < best_val:
-                best_val = val_loss
-                best_path = weights_dir / f"head_epoch{epoch:03d}.pth"
-                save_regression_checkpoint(best_path, model, targets, epoch)
+            best_val, best_checkpoint_path = maybe_save_best_regression_checkpoint(
+                weights_dir=weights_dir,
+                model=model,
+                targets=targets,
+                epoch=epoch,
+                val_loss=val_loss,
+                best_val_loss=best_val,
+                best_path=best_checkpoint_path,
+            )
             epoch_iter.set_postfix(**{loss_key: f"{train_loss:.4f}", f"val_{loss_key}": f"{val_loss:.4f}"})
             tqdm.write(
                 f"{log_prefix} train_{loss_key}={train_loss:.4f} val_{loss_key}={val_loss:.4f} metrics={metrics}"
@@ -221,12 +228,13 @@ def main() -> None:
                 loss_key=loss_key,
             )
 
-        last_path = weights_dir / "head_last.pth"
-        save_regression_checkpoint(last_path, model, targets, epoch)
+        save_last_regression_checkpoint(weights_dir, model, targets, epoch)
 
     print("✅ Training complete")
     print(f"   Trained on {len(train_paths)} images, validated on {len(val_paths)}")
     print(f"   Weights: {weights_dir}")
+    if best_val < float("inf") and best_checkpoint_path is not None:
+        print(f"   Best checkpoint: {best_checkpoint_path} (val_{loss_key}={best_val:.4f})")
     if normalizer is not None:
         print(f"   Normalization stats: {weights_dir / NORM_STATS_FILENAME}")
     if wandb_run is not None:

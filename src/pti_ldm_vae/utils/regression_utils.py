@@ -73,6 +73,37 @@ def extract_regression_train_config(config: dict[str, Any]) -> dict[str, Any]:
     return train_cfg
 
 
+def extract_regression_eval_config(config: dict[str, Any], data_cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Normalize evaluation configuration, falling back to training data settings.
+
+    Args:
+        config (dict[str, Any]): Full regression configuration.
+        data_cfg (dict[str, Any] | None): Optional precomputed data configuration for defaults.
+
+    Returns:
+        dict[str, Any]: Evaluation configuration with required fields set.
+
+    Raises:
+        KeyError: If required evaluation parameters are missing.
+    """
+    base_data_cfg = data_cfg or extract_regression_data_config(config)
+    eval_cfg = dict(config.get("evaluation", {}))
+
+    eval_cfg.setdefault("data_base_dir", base_data_cfg.get("data_base_dir"))
+    eval_cfg.setdefault("attributes_path", base_data_cfg.get("attributes_path"))
+    eval_cfg.setdefault("data_source", base_data_cfg.get("data_source", "edente"))
+    eval_cfg.setdefault("patch_size", base_data_cfg.get("patch_size"))
+    eval_cfg.setdefault("num_workers", base_data_cfg.get("num_workers", 4))
+    eval_cfg.setdefault("normalize_attributes", base_data_cfg.get("normalize_attributes"))
+
+    required = ["data_base_dir", "attributes_path", "patch_size"]
+    missing = [field for field in required if eval_cfg.get(field) is None]
+    if missing:
+        raise KeyError(f"Missing required evaluation config fields: {missing}")
+
+    return eval_cfg
+
+
 def extract_regressor_def_config(config: dict[str, Any]) -> dict[str, Any]:
     """Normalize regression head definition configuration across schemas.
 
@@ -397,6 +428,53 @@ def load_regression_checkpoint(path: Path, model: nn.Module, expected_targets: l
 
     model.regressor.load_state_dict(checkpoint["regressor_state_dict"])
     return checkpoint
+
+
+def save_last_regression_checkpoint(weights_dir: Path, model: nn.Module, targets: list[str], epoch: int) -> Path:
+    """Persist the latest regression head checkpoint (overwrites).
+
+    Args:
+        weights_dir (Path): Directory where weights are stored.
+        model (nn.Module): Model containing the regression head.
+        targets (list[str]): Ordered target names.
+        epoch (int): Current epoch index.
+
+    Returns:
+        Path: Path to the saved checkpoint.
+    """
+    path = weights_dir / "head_last.pth"
+    save_regression_checkpoint(path, model, targets, epoch)
+    return path
+
+
+def maybe_save_best_regression_checkpoint(
+    weights_dir: Path,
+    model: nn.Module,
+    targets: list[str],
+    epoch: int,
+    val_loss: float,
+    best_val_loss: float,
+    best_path: Path | None = None,
+) -> tuple[float, Path]:
+    """Save best regression checkpoint if validation improves.
+
+    Args:
+        weights_dir (Path): Directory where weights are stored.
+        model (nn.Module): Model containing the regression head.
+        targets (list[str]): Ordered target names.
+        epoch (int): Current epoch index.
+        val_loss (float): Current validation loss.
+        best_val_loss (float): Best validation loss so far.
+        best_path (Path | None): Existing best checkpoint path.
+
+    Returns:
+        tuple[float, Path]: Updated best validation loss and the best checkpoint path.
+    """
+    path = best_path or weights_dir / "head_best.pth"
+    if val_loss < best_val_loss:
+        save_regression_checkpoint(path, model, targets, epoch)
+        return val_loss, path
+    return best_val_loss, path
 
 
 def build_regression_model_from_config(
