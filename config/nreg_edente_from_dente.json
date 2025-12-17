@@ -34,7 +34,7 @@
     "lr": 0.0001,
     "max_epochs": 50,
     "val_interval": 1,
-    "target_norm": "none",
+    "target_norm": "standard",
     "loss": "mse"
   },
 
