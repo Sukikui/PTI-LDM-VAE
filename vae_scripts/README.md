@@ -100,6 +100,27 @@ python vae_scripts/inference_vae.py \
 - `results_png/` - PNG files normalized for visualization
 - `splits/vae_split.json` - Train/val file lists for this run (seed, split ratio, subset, val_dir)
 
+### evaluate_vae.py
+
+Évalue un VAE sur un dossier d’images.
+
+**Usage minimal :**
+
+```bash
+python vae_scripts/evaluate_vae.py \
+  --config-file config/ar_vae_edente.json \
+  --checkpoint runs/ar_vae_edente/trained_weights/autoencoder_epoch73.pth \
+  --input-dir data/test/edente
+```
+
+**Arguments clés :**
+
+- `--config-file` (obligatoire) : fichier config VAE.
+- `--checkpoint` (obligatoire) : checkpoint `autoencoder_epochXX.pth` ou `autoencoder_last.pt`.
+- `--input-dir` (obligatoire) : dossier d’images à évaluer.
+- `--output-dir` (optionnel) : dossier pour `metrics.json` (défaut `evals/<config_name>/`).
+- Overrides : `--batch-size`, `--num-workers`, `--num-samples`, `--seed`.
+
 ______________________________________________________________________
 
 ### compute_mask_metrics.py

@@ -16,7 +16,7 @@ ______________________________________________________________________
 - `src/pti_ldm_vae/utils/cli_common.py`
   - Helpers partagés : initialisation device/seed, résolution des dossiers d’output, chargement config + modèle VAE.
 - `src/pti_ldm_vae/utils/metrics.py`
-  - MAE/MSE par cible et agrégés.
+  - MAE/MSE/R2 par cible et agrégés.
 - Scripts : `reg_scripts/train_regression.py`, `reg_scripts/evaluate_regression.py`, `reg_scripts/inference_regression.py`.
 - Config exemple : `config/reg_edente_from_dente.json`.
 - Docs : section “Regression head” dédiée dans ce README, clés W&B ajoutées dans `WANDB_METRICS.md`.
@@ -29,7 +29,7 @@ ______________________________________________________________________
 2. Cibles lues dans `attributes_path` (JSON mapping filename → dict de métriques), filtrées sur `targets`.
 3. Batch : `(images, target_vectors)` → VAE encode → latent aplati → MLP → prédictions.
 4. Perte régression (MSE ou Huber) sur les cibles; option de normalisation standard des cibles (stockage des stats pour inference/éval).
-5. Logging : pertes + MAE/MSE par cible, W&B optionnel.
+5. Logging : pertes + MAE/MSE/R2 par cible, W&B optionnel.
 
 ______________________________________________________________________
 
@@ -126,7 +126,7 @@ python reg_scripts/train_regression.py \
 ### Évaluer (`reg_scripts/evaluate_regression.py`)
 
 - Args : `--config-file`, `--checkpoint` (tête), `--input-dir` (optionnel, par défaut `evaluation.data_base_dir`), `--attributes-path` (optionnel, par défaut `evaluation.attributes_path`), `--batch-size`, `--num-workers`, `--num-samples`, `--output-dir`, `--seed`.
-- Recharge VAE gelé + tête, dataloader identique; calcule MAE/MSE par cible et agrégés; écrit `metrics.json` dans `output-dir` (par défaut `<run_dir>/eval/`). Les chemins d’images/cibles d’éval sont lus dans la section `evaluation` de la config si non spécifiés en CLI.
+- Recharge VAE gelé + tête, dataloader identique; calcule MAE/MSE/R2 par cible et agrégés; écrit `metrics.json` dans `output-dir` (par défaut `<run_dir>/eval/`). Les chemins d’images/cibles d’éval sont lus dans la section `evaluation` de la config si non spécifiés en CLI.
 - Exemple :
 
 ```bash
@@ -163,7 +163,7 @@ runs/reg_head_edente/
 │   ├── head_best.pth             # meilleur modèle sauvegardé
 │   └── target_norm_stats.json    # si target_norm=standard
 ├── eval/
-│   └── metrics.json              # MAE/MSE par cible + global + args + fichiers évalués
+│   └── metrics.json              # MAE/MSE/R2 par cible + global + args + fichiers évalués
 └── inference/
     └── predictions.json          # {filename: {target: valeur}}
 ```

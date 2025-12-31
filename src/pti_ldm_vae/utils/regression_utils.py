@@ -215,7 +215,7 @@ def log_regression_epoch(
         train_loss (float): Training loss.
         best_val (float): Best validation loss so far.
         val_loss (float | None): Validation loss if computed this epoch.
-        metrics (dict[str, float] | None): Additional metrics (MAE/MSE).
+        metrics (dict[str, float] | None): Additional metrics (MAE/MSE/R2).
         loss_key (str): Loss key used for logging (e.g., ``loss_mse`` or ``loss_huber``).
     """
     if wandb_run is None:

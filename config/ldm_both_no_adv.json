@@ -1,0 +1,62 @@
+{
+  "run_dir": "./runs/ldm_both_no_adv",
+  "seed": 42,
+  "data": {
+    "data_base_dir": "./data/train_val",
+    "patch_size": [256, 256],
+    "train_split": 0.9,
+    "num_workers": 4,
+    "cache_rate": 0.0,
+    "subset_size": null,
+    "val_dir": null
+  },
+  "vae": {
+    "config_file": "./config/vae_both_no_adv.json",
+    "checkpoint": "./runs/vae_both_no_adv/trained_weights/checkpoint_epoch97.pth"
+  },
+  "regressor": {
+    "config_file": "./config/nreg_edente_from_both.json",
+    "checkpoint": "./runs/nreg_edente_from_both/trained_weights/head_last.pth",
+    "targets": ["height_0", "width_0", "width_1", "width_2", "width_3", "width_4"]
+  },
+  "unet": {
+    "spatial_dims": 2,
+    "in_channels": 4,
+    "out_channels": 4,
+    "channels": [32, 64, 128],
+    "attention_levels": [false, true, true],
+    "num_head_channels": [0, 32, 32],
+    "num_res_blocks": 2,
+    "with_conditioning": true,
+    "cross_attention_dim": 256,
+    "norm_num_groups": 32
+  },
+  "conditioning": {
+    "concat_dentate": false,
+    "condition_dropout": 0.1,
+    "metrics_dropout": 0.1,
+    "metric_dropout": 0.0
+  },
+  "diffusion": {
+    "num_train_timesteps": 1000,
+    "beta_start": 0.00085,
+    "beta_end": 0.012
+  },
+  "train": {
+    "batch_size": 4,
+    "lr": 1e-4,
+    "weight_decay": 0.0,
+    "max_epochs": 100,
+    "val_interval": 1,
+    "log_interval": 1,
+    "clip_grad": 1.0,
+    "ema_decay": 0.999
+  },
+  "wandb": {
+    "enabled": false,
+    "project": "pti-ldm-vae",
+    "entity": null,
+    "name": "ldm_both_no_adv",
+    "tags": ["ldm", "both_no_adv", "unet_32-64-128", "latent4", "cond_metric6", "concat_false"]
+  }
+}
