@@ -108,6 +108,7 @@ Sorties (par défaut) : `inference_<checkpoint_name>/results_tif/` (concat dent�
   - `best/val_loss_total` dans le résumé.
 - Les clés `project`, `entity`, `name`, `tags`, `notes` suivent la même convention que les scripts VAE/régression. Si `wandb` est absent ou `enabled=false`, rien n’est loggé.
 - Aucun TensorBoard n’est utilisé.
+- Le script charge automatiquement le fichier `.env` (ex: `WANDB_API_KEY`, `WANDB_PROJECT`, `WANDB_ENTITY`).
 
 ## Notes rapides
 

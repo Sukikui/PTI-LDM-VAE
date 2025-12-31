@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from dotenv import load_dotenv
 from torch.amp import GradScaler
 from torch.optim import AdamW
 from tqdm import tqdm
@@ -23,6 +24,8 @@ from pti_ldm_vae.ldm import (
     create_ldm_dataloaders,
 )
 from pti_ldm_vae.utils.cli_common import load_json_config
+
+load_dotenv()
 
 
 def parse_args() -> argparse.Namespace:
