@@ -47,20 +47,38 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_unet_weights(unet: torch.nn.Module, checkpoint: str) -> None:
-    """Load UNet (and optionally EMA) weights from checkpoint.
+def load_ldm_checkpoint(
+    unet: torch.nn.Module,
+    metric_embed: torch.nn.Module,
+    condition_builder: torch.nn.Module,
+    checkpoint: str,
+) -> None:
+    """Load LDM checkpoint weights for the UNet and conditioning modules.
 
     Args:
-        unet: UNet instance to populate.
-        checkpoint: Checkpoint path.
+        unet (torch.nn.Module): UNet instance to populate.
+        metric_embed (torch.nn.Module): Metric conditioning embed module.
+        condition_builder (torch.nn.Module): Spatial conditioning context builder.
+        checkpoint (str): Checkpoint path.
+
+    Returns:
+        None
     """
     payload = torch.load(checkpoint, map_location="cpu")
-    if payload.get("ema_unet_state_dict"):
-        unet.load_state_dict(payload["ema_unet_state_dict"])
-    elif "unet_state_dict" in payload:
-        unet.load_state_dict(payload["unet_state_dict"])
+    unet_state = payload.get("ema_unet_state_dict") or payload.get("unet_state_dict") or payload
+    unet.load_state_dict(unet_state)
+
+    metric_state = payload.get("metric_embed_state_dict")
+    if metric_state is not None:
+        metric_embed.load_state_dict(metric_state)
     else:
-        unet.load_state_dict(payload)
+        print("[WARN] metric_embed_state_dict not found in checkpoint; using default initialization.")
+
+    condition_state = payload.get("condition_builder_state_dict")
+    if condition_state is not None:
+        condition_builder.load_state_dict(condition_state)
+    else:
+        print("[WARN] condition_builder_state_dict not found in checkpoint; using default initialization.")
 
 
 def save_results(
@@ -126,8 +144,6 @@ def main() -> None:
     unet_cfg["in_channels"] = latent_channels * (2 if concat_dentate else 1)
     unet_cfg["out_channels"] = latent_channels
     unet = build_unet(unet_cfg).to(device)
-    load_unet_weights(unet, args.checkpoint)
-    unet.eval()
 
     cross_attention_dim = unet_cfg.get("cross_attention_dim", 256)
     metric_embed = MetricConditioning(
@@ -136,6 +152,8 @@ def main() -> None:
         dropout=0.0,
     ).to(device)
     condition_builder = ConditionContextBuilder(latent_channels, cross_attention_dim).to(device)
+    load_ldm_checkpoint(unet, metric_embed, condition_builder, args.checkpoint)
+    unet.eval()
 
     schedule = DiffusionSchedule.linear(
         timesteps=diffusion_cfg.get("num_train_timesteps", 1000),

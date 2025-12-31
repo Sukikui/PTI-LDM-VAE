@@ -220,6 +220,8 @@ def main() -> None:
     for epoch in range(max_epochs):
         epoch_start = time.time()
         trainer.unet.train()
+        trainer.metric_embed.train()
+        trainer.condition_builder.train()
         train_loss_sum = 0.0
         train_steps = 0
         for batch in tqdm(train_loader, desc=f"Train {epoch + 1}/{max_epochs}", unit="batch"):
@@ -251,6 +253,8 @@ def main() -> None:
         run_validation = (epoch + 1) % val_interval == 0 or epoch == max_epochs - 1
         if run_validation:
             trainer.unet.eval()
+            trainer.metric_embed.eval()
+            trainer.condition_builder.eval()
             val_loss_sum = 0.0
             val_steps = 0
             with torch.no_grad():

@@ -53,7 +53,7 @@
     "ema_decay": 0.999
   },
   "wandb": {
-    "enabled": false,
+    "enabled": true,
     "project": "pti-ldm-vae",
     "entity": null,
     "name": "ldm_both_no_adv",

@@ -72,10 +72,10 @@ class LDMTrainer:
         """Perform a single training step.
 
         Args:
-            batch: Tuple of (edentulous images, dentate images).
+            batch (tuple[torch.Tensor, torch.Tensor]): Tuple of (edentulous images, dentate images).
 
         Returns:
-            Detached loss tensor.
+            torch.Tensor: Detached loss tensor.
         """
         images, condition_images = batch
         images = images.to(self.device)
@@ -85,15 +85,16 @@ class LDMTrainer:
             z_target = self.vae.encode_stage_2_inputs(images)
             z_condition = self.vae.encode_deterministic(condition_images)
             metrics = self.regressor(condition_images)
-            z_condition, metrics = apply_condition_dropout(
-                z_condition,
-                metrics,
-                self.drop_z_prob,
-                self.drop_metrics_prob,
-                lambda shape: torch.rand(shape, device=self.device),
-            )
-            metric_tokens = self.metric_embed(metrics)
-            context = self.condition_builder(z_condition, metric_tokens)
+
+        z_condition, metrics = apply_condition_dropout(
+            z_condition,
+            metrics,
+            self.drop_z_prob,
+            self.drop_metrics_prob,
+            lambda shape: torch.rand(shape, device=self.device),
+        )
+        metric_tokens = self.metric_embed(metrics)
+        context = self.condition_builder(z_condition, metric_tokens)
 
         noise = torch.randn_like(z_target)
         timesteps = torch.randint(
@@ -127,10 +128,10 @@ class LDMTrainer:
         """Compute validation loss on one batch.
 
         Args:
-            batch: Tuple of (edentulous images, dentate images).
+            batch (tuple[torch.Tensor, torch.Tensor]): Tuple of (edentulous images, dentate images).
 
         Returns:
-            Detached MSE loss tensor.
+            torch.Tensor: Detached MSE loss tensor.
         """
         images, condition_images = batch
         images = images.to(self.device)
@@ -164,12 +165,12 @@ class LDMTrainer:
         """Persist the UNet (and EMA if present) along with optimizer state.
 
         Args:
-            state: Trainer state metadata.
-            checkpoint_dir: Destination directory.
-            best: Whether this is the best checkpoint.
+            state (TrainerState): Trainer state metadata.
+            checkpoint_dir (Path): Destination directory.
+            best (bool): Whether this is the best checkpoint.
 
         Returns:
-            Path to the saved file.
+            Path: Path to the saved file.
         """
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         suffix = "best" if best else "last"
@@ -181,6 +182,8 @@ class LDMTrainer:
                 "best_val_loss": state.best_val_loss,
                 "unet_state_dict": self.unet.state_dict(),
                 "ema_unet_state_dict": self.ema_unet.state_dict() if self.ema_unet is not None else None,
+                "metric_embed_state_dict": self.metric_embed.state_dict(),
+                "condition_builder_state_dict": self.condition_builder.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
             path,

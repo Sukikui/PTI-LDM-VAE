@@ -51,20 +51,22 @@ class LatentDiffusionSampler:
         """Generate edentulous reconstructions from dentate images.
 
         Args:
-            dentate_images: Input dentate images [B, C, H, W].
-            regressor: Callable predicting metrics from images.
-            num_steps: Number of reverse diffusion steps.
-            guidance_scale: Guidance strength (None disables CFG).
-            drop_z_prob: Dropout prob. for dentate latent during sampling.
-            drop_metrics_prob: Dropout prob. for metrics during sampling.
-            eta: DDIM noise scale.
+            dentate_images (torch.Tensor): Input dentate images [B, C, H, W].
+            regressor (Callable[[torch.Tensor], torch.Tensor]): Callable predicting metrics from images.
+            num_steps (int): Number of reverse diffusion steps.
+            guidance_scale (float | None): Guidance strength (None disables CFG).
+            drop_z_prob (float): Dropout prob. for dentate latent during sampling.
+            drop_metrics_prob (float): Dropout prob. for metrics during sampling.
+            eta (float): DDIM noise scale.
 
         Returns:
-            Generated edentulous images decoded by the VAE.
+            torch.Tensor: Generated edentulous images decoded by the VAE.
         """
         device = dentate_images.device
         self.unet.eval()
         self.vae.eval()
+        self.metric_embed.eval()
+        self.condition_builder.eval()
         z_cond = self.vae.encode_deterministic(dentate_images)
         metrics = regressor(dentate_images)
 

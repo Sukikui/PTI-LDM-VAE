@@ -81,9 +81,10 @@ python ldm_scripts/train_ldm.py -c config/ldm_example.json \
 Exemple direct avec tes poids : `config/ldm_both_no_adv.json` (VAE `checkpoint_epoch97.pth`, head `head_last.pth`).
 
 - Checkpoints : `runs/<run_dir>/trained_weights/ldm_unet_last.pth` et `ldm_unet_best.pth` (+ EMA si activé).
+  Ces checkpoints incluent aussi `metric_embed` et `condition_builder` pour garder le conditionnement coherent.
 - Split sauvegardé : `runs/<run_dir>/splits/ldm_pairs.json`.
 
-## Génération
+## Generation
 
 ```bash
 python ldm_scripts/sample_ldm.py \
@@ -113,4 +114,6 @@ Sorties (par défaut) : `inference_<checkpoint_name>/results_tif/` (concat dent�
 - VAE et tête de régression sont gelés (`encode_stage_2_inputs` pour la cible édentée, `encode_deterministic` pour le conditionnement denté).
 - Metrics utilisées telles que prédites par la tête (espace normalisé si la tête a été entraînée ainsi).
 - Scheduler simplifié DDPM linéaire ; sampling DDIM déterministe (`eta=0`), bruit stochastique si `eta>0`.
-- Guidance : activer `condition_dropout`/`metrics_dropout` à l'entraînement puis utiliser `--guidance-scale` au sampling.
+- Guidance : activer `condition_dropout`/`metrics_dropout` a l'entrainement puis utiliser `--guidance-scale` au sampling.
+- Les scripts de generation chargent aussi les poids du conditionnement; si un ancien checkpoint ne les contient pas,
+  un warning est affiche et les modules sont initialises par defaut.

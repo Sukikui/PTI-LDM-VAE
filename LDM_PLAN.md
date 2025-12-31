@@ -212,6 +212,10 @@ Step 5) Decode final latent
    ε_hat = εθ(zt, t, z0\*, â)
    L = ||ε - ε_hat||^2
 
+8. Conditioning modules must be trained and checkpointed
+   The metric embedder and condition builder are part of the LDM and should not be in no_grad.
+   Save and load their weights alongside the UNet to keep train/inference conditioning consistent.
+
 ## Sanity checks (must pass)
 
 1. Shapes:
