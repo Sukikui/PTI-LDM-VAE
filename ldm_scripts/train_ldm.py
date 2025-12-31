@@ -9,6 +9,7 @@ from typing import Any
 import torch
 from torch.amp import GradScaler
 from torch.optim import AdamW
+from tqdm import tqdm
 
 from pti_ldm_vae.ldm import (
     ConditionContextBuilder,
@@ -216,14 +217,12 @@ def main() -> None:
     state = TrainerState(epoch=0, global_step=0, best_val_loss=float("inf"))
     max_epochs = train_cfg["max_epochs"]
     val_interval = train_cfg.get("val_interval", 1)
-    log_interval = train_cfg.get("log_interval", 50)
-
     for epoch in range(max_epochs):
         epoch_start = time.time()
         trainer.unet.train()
         train_loss_sum = 0.0
         train_steps = 0
-        for batch in train_loader:
+        for batch in tqdm(train_loader, desc=f"Train {epoch + 1}/{max_epochs}", unit="batch"):
             loss = trainer.training_step(batch)
             state.global_step += 1
             train_loss_sum += loss.item()
@@ -238,16 +237,15 @@ def main() -> None:
                 )
 
         train_loss = train_loss_sum / max(train_steps, 1)
-        if (epoch + 1) % log_interval == 0 or epoch == 0:
-            print(f"[Epoch {epoch + 1}/{max_epochs}] train_loss={train_loss:.4f}")
-            if wandb_run is not None:
-                wandb_run.log(
-                    {
-                        "train/loss_total_epoch": train_loss,
-                        "train/noise_loss_epoch": train_loss,
-                        "epoch": epoch + 1,
-                    }
-                )
+        print(f"[Epoch {epoch + 1}/{max_epochs}] train_loss={train_loss:.4f}")
+        if wandb_run is not None:
+            wandb_run.log(
+                {
+                    "train/loss_total_epoch": train_loss,
+                    "train/noise_loss_epoch": train_loss,
+                    "epoch": epoch + 1,
+                }
+            )
 
         state.epoch = epoch
         run_validation = (epoch + 1) % val_interval == 0 or epoch == max_epochs - 1
@@ -256,7 +254,7 @@ def main() -> None:
             val_loss_sum = 0.0
             val_steps = 0
             with torch.no_grad():
-                for batch in val_loader:
+                for batch in tqdm(val_loader, desc=f"Val {epoch + 1}/{max_epochs}", unit="batch"):
                     val_loss = trainer.validation_step(batch)
                     val_loss_sum += val_loss.item()
                     val_steps += 1
