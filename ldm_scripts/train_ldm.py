@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 from dotenv import load_dotenv
-from torch.amp import GradScaler
+from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from tqdm import tqdm
 
@@ -24,6 +24,7 @@ from pti_ldm_vae.ldm import (
     create_ldm_dataloaders,
 )
 from pti_ldm_vae.utils.cli_common import load_json_config
+from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
 load_dotenv()
 
@@ -83,6 +84,128 @@ def override_train_cfg(train_cfg: dict[str, Any], args: argparse.Namespace) -> d
     return train_cfg
 
 
+def compute_scale_factor(
+    vae: torch.nn.Module,
+    sample_batch: tuple[torch.Tensor, torch.Tensor],
+    device: torch.device,
+) -> float:
+    """Compute a scale factor for latent normalization.
+
+    Args:
+        vae (torch.nn.Module): Frozen VAE model.
+        sample_batch (tuple[torch.Tensor, torch.Tensor]): Batch of (edentulous, dentate) images.
+        device (torch.device): Target device for computation.
+
+    Returns:
+        float: Scale factor defined as 1 / std(z).
+    """
+    images, _ = sample_batch
+    images = images.to(device)
+    amp_dtype = torch.float16 if device.type == "cuda" else None
+    with torch.no_grad():
+        with autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_dtype is not None):
+            latent = vae.encode_stage_2_inputs(images)
+    latent_std = torch.std(latent).item()
+    if latent_std <= 0:
+        return 1.0
+    return 1.0 / latent_std
+
+
+def log_sanity_samples(
+    wandb_run: Any,
+    *,
+    unet: torch.nn.Module,
+    vae: torch.nn.Module,
+    regressor: Any,
+    condition_builder: ConditionContextBuilder,
+    metric_embed: MetricConditioning,
+    schedule: DiffusionSchedule,
+    concat_dentate: bool,
+    scale_factor: float,
+    batch: tuple[torch.Tensor, torch.Tensor],
+    batch_idx: int,
+    num_steps: int,
+    step_indices: list[int],
+    max_samples: int,
+    epoch: int,
+) -> None:
+    """Log step-wise samples to W&B for visual sanity checks.
+
+    Args:
+        wandb_run (Any): Active W&B run or ``None``.
+        unet (torch.nn.Module): Diffusion UNet.
+        vae (torch.nn.Module): Frozen VAE for encoding/decoding.
+        regressor (Any): Frozen regression head callable.
+        condition_builder (ConditionContextBuilder): Conditioning module for latents.
+        metric_embed (MetricConditioning): Conditioning module for metrics.
+        schedule (DiffusionSchedule): Diffusion schedule.
+        concat_dentate (bool): Whether to concatenate dentate latents to the UNet input.
+        scale_factor (float): Latent scale factor (1 / std).
+        batch (tuple[torch.Tensor, torch.Tensor]): Batch of (edentulous, dentate) images.
+        batch_idx (int): Validation batch index.
+        num_steps (int): Number of diffusion steps for sampling.
+        step_indices (list[int]): 1-based sampling steps to visualize.
+        max_samples (int): Max number of samples to log per batch.
+        epoch (int): Current epoch index.
+    """
+    if wandb_run is None:
+        return
+
+    try:
+        import wandb  # type: ignore
+    except ImportError:
+        return
+
+    step_set = {int(step) for step in step_indices if 1 <= int(step) <= num_steps}
+    if not step_set:
+        return
+
+    edente, dentate = batch
+    device = next(unet.parameters()).device
+    edente = edente.to(device)
+    dentate = dentate.to(device)
+
+    with torch.no_grad():
+        z_cond = vae.encode_deterministic(dentate) * scale_factor
+        metrics = regressor(dentate)
+        metric_tokens = metric_embed(metrics)
+        context = condition_builder(z_cond, metric_tokens)
+
+        latent = torch.randn_like(z_cond)
+        timesteps = torch.linspace(
+            schedule.alphas.shape[0] - 1, 0, num_steps, device=device, dtype=torch.long
+        ).long()
+
+        saved_latents: dict[int, torch.Tensor] = {}
+        for step_idx, t in enumerate(timesteps, start=1):
+            latent_input = torch.cat([latent, z_cond], dim=1) if concat_dentate else latent
+            timestep_batch = t.unsqueeze(0).repeat(latent.shape[0])
+            eps = unet(latent_input, timesteps=timestep_batch, context=context)
+            latent = schedule.step(eps, int(t.item()), latent, eta=0.0)
+            if step_idx in step_set:
+                saved_latents[step_idx] = latent.detach().clone()
+
+        disp_dentate = normalize_batch_for_display(dentate.detach().cpu())
+        disp_target = normalize_batch_for_display(edente.detach().cpu())
+
+        for step_idx in sorted(saved_latents):
+            decoded = vae.decode_stage_2_outputs(saved_latents[step_idx] / scale_factor)
+            disp_generated = normalize_batch_for_display(decoded.detach().cpu())
+            images = []
+            for idx in range(min(max_samples, disp_dentate.shape[0])):
+                triplet = torch.cat(
+                    [disp_dentate[idx], disp_target[idx], disp_generated[idx]],
+                    dim=2,
+                )[0].numpy()
+                images.append(wandb.Image(triplet, caption=f"step={step_idx} sample={idx:02d}"))
+
+            if images:
+                wandb_run.log(
+                    {f"val/sample_epoch{epoch:03d}/batch_{batch_idx:03d}": images, "epoch": epoch + 1},
+                    step=epoch + 1,
+                )
+
+
 def init_wandb(wandb_cfg: dict[str, Any], run_dir: Path, train_cfg: dict[str, Any], config_path: str):
     """Initialize Weights & Biases if enabled in config."""
     if not wandb_cfg.get("enabled", False):
@@ -93,7 +216,7 @@ def init_wandb(wandb_cfg: dict[str, Any], run_dir: Path, train_cfg: dict[str, An
         print("[WARN] W&B enabled but package 'wandb' is not installed.")
         return None
 
-    project = wandb_cfg.get("project") or os.getenv("WANDB_PROJECT", "pti-ldm-vae")
+    project = os.getenv("WANDB_PROJECT", wandb_cfg.get("project", "pti-ldm-vae"))
     entity = wandb_cfg.get("entity") or os.getenv("WANDB_ENTITY")
     run_name = wandb_cfg.get("name") or run_dir.name
     tags = wandb_cfg.get("tags", [])
@@ -185,6 +308,10 @@ def main() -> None:
         cross_attention_dim=cross_attention_dim,
     ).to(device)
 
+    first_batch = next(iter(train_loader))
+    scale_factor = compute_scale_factor(vae, first_batch, device)
+    print(f"[INFO] Latent scale_factor: {scale_factor:.6f}")
+
     schedule = DiffusionSchedule.linear(
         timesteps=diffusion_cfg.get("num_train_timesteps", 1000),
         beta_start=diffusion_cfg.get("beta_start", 0.00085),
@@ -212,6 +339,7 @@ def main() -> None:
         concat_dentate=concat_dentate,
         drop_z_prob=conditioning_cfg.get("condition_dropout", 0.0),
         drop_metrics_prob=conditioning_cfg.get("metrics_dropout", 0.0),
+        scale_factor=scale_factor,
         clip_grad=train_cfg.get("clip_grad"),
         ema_unet=ema_unet,
         ema_decay=train_cfg.get("ema_decay"),
@@ -220,6 +348,12 @@ def main() -> None:
     state = TrainerState(epoch=0, global_step=0, best_val_loss=float("inf"))
     max_epochs = train_cfg["max_epochs"]
     val_interval = train_cfg.get("val_interval", 1)
+    sanity_cfg = config.get("sanity_sampling", {})
+    sanity_enabled = bool(sanity_cfg.get("enabled", True))
+    sanity_every = int(sanity_cfg.get("every", 20))
+    sanity_steps = int(sanity_cfg.get("num_steps", 50))
+    sanity_step_indices = sanity_cfg.get("step_indices", [1, 10, 20, 40, 50])
+    sanity_max_samples = int(sanity_cfg.get("max_samples", 1))
     for epoch in range(max_epochs):
         epoch_start = time.time()
         trainer.unet.train()
@@ -281,6 +415,27 @@ def main() -> None:
                 trainer.save_checkpoint(state, weights_dir, best=True)
                 if wandb_run is not None:
                     wandb_run.summary["best/val_loss_total"] = val_loss
+
+            if sanity_enabled and wandb_run is not None and sanity_every > 0 and epoch % sanity_every == 0:
+                with torch.no_grad():
+                    for batch_idx, batch in enumerate(val_loader):
+                        log_sanity_samples(
+                            wandb_run,
+                            unet=trainer.unet,
+                            vae=trainer.vae,
+                            regressor=trainer.regressor,
+                            condition_builder=trainer.condition_builder,
+                            metric_embed=trainer.metric_embed,
+                            schedule=schedule,
+                            concat_dentate=concat_dentate,
+                            scale_factor=scale_factor,
+                            batch=batch,
+                            batch_idx=batch_idx,
+                            num_steps=sanity_steps,
+                            step_indices=list(sanity_step_indices),
+                            max_samples=sanity_max_samples,
+                            epoch=epoch,
+                        )
 
         epoch_time = time.time() - epoch_start
         if wandb_run is not None:

@@ -61,6 +61,13 @@ Scripts pour entraîner et inférer le Latent Diffusion Model conditionné par l
     "log_interval": 1,
     "clip_grad": 1.0,
     "ema_decay": 0.999
+  },
+  "sanity_sampling": {
+    "enabled": true,
+    "every": 20,
+    "num_steps": 50,
+    "step_indices": [1, 10, 20, 40, 50],
+    "max_samples": 1
   }
 }
 ```
@@ -96,7 +103,8 @@ python ldm_scripts/sample_ldm.py \
   --guidance-scale 3.0
 ```
 
-Sorties (par défaut) : `inference_<checkpoint_name>/results_tif/` (concat denté|édenté synth) et `results_png/` (version normalisée).
+Sorties (par défaut) : `runs/<run_dir>/results/<input_dir>/results_tif/` (concat dente|edente synth) et `results_png/` (version normalisee).
+Utiliser `--output-dir` pour choisir un dossier different (les sous-dossiers `results_tif/` et `results_png/` sont crees).
 
 ## Weights & Biases
 
@@ -106,7 +114,7 @@ Sorties (par défaut) : `inference_<checkpoint_name>/results_tif/` (concat dent�
   - `val/loss_total` et `val/noise_loss` par epoch.
   - `time/epoch` en secondes.
   - `best/val_loss_total` dans le résumé.
-- Les clés `project`, `entity`, `name`, `tags`, `notes` suivent la même convention que les scripts VAE/régression. Si `wandb` est absent ou `enabled=false`, rien n’est loggé.
+- Les clés `project`, `entity`, `name`, `tags`, `notes` suivent la même convention que les scripts VAE/régression (env `WANDB_PROJECT` prioritaire). Si `wandb` est absent ou `enabled=false`, rien n’est loggé.
 - Aucun TensorBoard n’est utilisé.
 - Le script charge automatiquement le fichier `.env` (ex: `WANDB_API_KEY`, `WANDB_PROJECT`, `WANDB_ENTITY`).
 
@@ -118,3 +126,7 @@ Sorties (par défaut) : `inference_<checkpoint_name>/results_tif/` (concat dent�
 - Guidance : activer `condition_dropout`/`metrics_dropout` a l'entrainement puis utiliser `--guidance-scale` au sampling.
 - Les scripts de generation chargent aussi les poids du conditionnement; si un ancien checkpoint ne les contient pas,
   un warning est affiche et les modules sont initialises par defaut.
+- Un `scale_factor` (1 / std(latents)) est calcule au debut de l'entraînement et stocke dans les checkpoints.
+- Sanity sampling (W&B uniquement) : toutes les `every` epochs, on logge pour chaque batch de validation une sequence
+  d'images `[dente | edente | synth]` aux steps definis par `step_indices`. Les logs apparaissent sous
+  `val/sample_epochXXX/batch_YYY`.

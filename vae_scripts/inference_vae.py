@@ -16,7 +16,7 @@ from pti_ldm_vae.utils.cli_common import (
     build_inference_dataloader,
     init_device_and_seed,
     load_config_and_model,
-    resolve_inference_output_dirs,
+    resolve_vae_inference_output_dirs,
 )
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
 
@@ -95,7 +95,8 @@ def main() -> None:
     print(f"[INFO] Loaded config from {args.config_file}")
 
     # Setup output directories
-    output_dir, out_tif, out_png = resolve_inference_output_dirs(args.checkpoint, args.output_dir)
+    run_dir = getattr(config, "run_dir", "runs/vae_run")
+    output_dir, out_tif, out_png = resolve_vae_inference_output_dirs(run_dir, args.input_dir, args.output_dir)
     print(f"[INFO] Output directory: {output_dir}")
 
     # Create dataloader

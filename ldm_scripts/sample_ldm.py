@@ -4,6 +4,7 @@ from pathlib import Path
 import tifffile
 import torch
 from PIL import Image
+from tqdm import tqdm
 
 from pti_ldm_vae.ldm import (
     ConditionContextBuilder,
@@ -18,7 +19,6 @@ from pti_ldm_vae.utils.cli_common import (
     build_inference_dataloader,
     init_device_and_seed,
     load_json_config,
-    resolve_inference_output_dirs,
 )
 from pti_ldm_vae.utils.vae_loader import load_vae_config
 from pti_ldm_vae.utils.visualization import normalize_batch_for_display
@@ -52,7 +52,7 @@ def load_ldm_checkpoint(
     metric_embed: torch.nn.Module,
     condition_builder: torch.nn.Module,
     checkpoint: str,
-) -> None:
+) -> float:
     """Load LDM checkpoint weights for the UNet and conditioning modules.
 
     Args:
@@ -62,7 +62,7 @@ def load_ldm_checkpoint(
         checkpoint (str): Checkpoint path.
 
     Returns:
-        None
+        float: Latent scale factor (defaults to 1.0 when missing).
     """
     payload = torch.load(checkpoint, map_location="cpu")
     unet_state = payload.get("ema_unet_state_dict") or payload.get("unet_state_dict") or payload
@@ -79,6 +79,8 @@ def load_ldm_checkpoint(
         condition_builder.load_state_dict(condition_state)
     else:
         print("[WARN] condition_builder_state_dict not found in checkpoint; using default initialization.")
+
+    return float(payload.get("scale_factor", 1.0))
 
 
 def save_results(
@@ -114,6 +116,30 @@ def save_results(
         png_uint8 = (png_pair * 255).astype("uint8")
         Image.fromarray(png_uint8).save(out_png / f"sample_{start_idx + i:04d}.png")
     return start_idx + batch_size
+
+
+def _default_output_dirs(run_dir: Path, input_dir: str) -> tuple[Path, Path, Path]:
+    """Resolve default output directories for LDM sampling.
+
+    Args:
+        run_dir (Path): Root directory for the LDM run.
+        input_dir (str): Input directory passed to the sampler.
+
+    Returns:
+        tuple[Path, Path, Path]: Root output directory, TIF subfolder, PNG subfolder.
+    """
+    input_path = Path(input_dir).resolve()
+    try:
+        relative_input = input_path.relative_to(Path.cwd())
+    except ValueError:
+        relative_input = Path(str(input_path).lstrip("/"))
+
+    base_output = run_dir / "results" / relative_input
+    out_tif = base_output / "results_tif"
+    out_png = base_output / "results_png"
+    out_tif.mkdir(parents=True, exist_ok=True)
+    out_png.mkdir(parents=True, exist_ok=True)
+    return base_output, out_tif, out_png
 
 
 def main() -> None:
@@ -152,7 +178,7 @@ def main() -> None:
         dropout=0.0,
     ).to(device)
     condition_builder = ConditionContextBuilder(latent_channels, cross_attention_dim).to(device)
-    load_ldm_checkpoint(unet, metric_embed, condition_builder, args.checkpoint)
+    scale_factor = load_ldm_checkpoint(unet, metric_embed, condition_builder, args.checkpoint)
     unet.eval()
 
     schedule = DiffusionSchedule.linear(
@@ -169,6 +195,7 @@ def main() -> None:
         metric_embed=metric_embed,
         schedule=schedule,
         concat_dentate=concat_dentate,
+        scale_factor=scale_factor,
     )
 
     # Reuse VAE dataloader helper for dentate images only
@@ -181,13 +208,21 @@ def main() -> None:
         num_workers=args.num_workers,
     )
 
-    output_dir, out_tif, out_png = resolve_inference_output_dirs(args.checkpoint, args.output_dir)
+    run_dir = Path(config.get("run_dir", "runs/ldm_run"))
+    if args.output_dir is None:
+        output_dir, out_tif, out_png = _default_output_dirs(run_dir, args.input_dir)
+    else:
+        output_dir = Path(args.output_dir)
+        out_tif = output_dir / "results_tif"
+        out_png = output_dir / "results_png"
+        out_tif.mkdir(parents=True, exist_ok=True)
+        out_png.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     out_tif.mkdir(parents=True, exist_ok=True)
     out_png.mkdir(parents=True, exist_ok=True)
 
     idx = 0
-    for batch in dataloader:
+    for batch in tqdm(dataloader, desc="Sampling", unit="batch"):
         batch = batch.to(device)
         generated = sampler(
             dentate_images=batch,

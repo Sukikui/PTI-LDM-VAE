@@ -216,6 +216,14 @@ Step 5) Decode final latent
    The metric embedder and condition builder are part of the LDM and should not be in no_grad.
    Save and load their weights alongside the UNet to keep train/inference conditioning consistent.
 
+9. Latent scale factor
+   Compute a scale factor from a batch of VAE latents (1 / std(z)) and apply it during training and sampling.
+   This keeps the diffusion dynamics aligned with a unit-variance latent distribution.
+
+10. W&B sanity sampling (optional)
+   Every N epochs, log validation samples to W&B as triplets: [dente | edente | synth].
+   Use a short list of sampling steps (e.g., 1, 10, 20, 40, 50) to visualize denoising progress.
+
 ## Sanity checks (must pass)
 
 1. Shapes:

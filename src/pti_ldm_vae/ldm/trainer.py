@@ -40,6 +40,7 @@ class LDMTrainer:
         concat_dentate: bool,
         drop_z_prob: float,
         drop_metrics_prob: float,
+        scale_factor: float = 1.0,
         clip_grad: float | None = None,
         ema_unet: torch.nn.Module | None = None,
         ema_decay: float | None = 0.999,
@@ -56,6 +57,7 @@ class LDMTrainer:
         self.concat_dentate = concat_dentate
         self.drop_z_prob = drop_z_prob
         self.drop_metrics_prob = drop_metrics_prob
+        self.scale_factor = float(scale_factor)
         self.clip_grad = clip_grad
         self.ema_unet = ema_unet
         self.ema_decay = ema_decay
@@ -85,6 +87,9 @@ class LDMTrainer:
             z_target = self.vae.encode_stage_2_inputs(images)
             z_condition = self.vae.encode_deterministic(condition_images)
             metrics = self.regressor(condition_images)
+
+        z_target = z_target * self.scale_factor
+        z_condition = z_condition * self.scale_factor
 
         z_condition, metrics = apply_condition_dropout(
             z_condition,
@@ -140,6 +145,10 @@ class LDMTrainer:
         z_target = self.vae.encode_deterministic(images)
         z_condition = self.vae.encode_deterministic(condition_images)
         metrics = self.regressor(condition_images)
+
+        z_target = z_target * self.scale_factor
+        z_condition = z_condition * self.scale_factor
+
         metric_tokens = self.metric_embed(metrics)
         context = self.condition_builder(z_condition, metric_tokens)
 
@@ -184,6 +193,7 @@ class LDMTrainer:
                 "ema_unet_state_dict": self.ema_unet.state_dict() if self.ema_unet is not None else None,
                 "metric_embed_state_dict": self.metric_embed.state_dict(),
                 "condition_builder_state_dict": self.condition_builder.state_dict(),
+                "scale_factor": self.scale_factor,
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
             path,

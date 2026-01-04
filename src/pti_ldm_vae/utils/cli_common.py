@@ -119,6 +119,38 @@ def resolve_inference_output_dirs(checkpoint_path: str, output_dir: str | None) 
     return base_output, out_tif, out_png
 
 
+def resolve_vae_inference_output_dirs(
+    run_dir: str | Path,
+    input_dir: str,
+    output_dir: str | None,
+) -> tuple[Path, Path, Path]:
+    """Compute output directories for VAE inference results.
+
+    Args:
+        run_dir (str | Path): VAE run directory from the config.
+        input_dir (str): Input directory passed to the inference command.
+        output_dir (str | None): Optional override for the output directory.
+
+    Returns:
+        tuple[Path, Path, Path]: Root output directory, TIF subfolder, PNG subfolder.
+    """
+    if output_dir is not None:
+        base_output = Path(output_dir)
+    else:
+        input_path = Path(input_dir).resolve()
+        try:
+            relative_input = input_path.relative_to(Path.cwd())
+        except ValueError:
+            relative_input = Path(str(input_path).lstrip("/"))
+        base_output = Path(run_dir) / "inference" / relative_input
+
+    out_tif = base_output / "results_tif"
+    out_png = base_output / "results_png"
+    out_tif.mkdir(parents=True, exist_ok=True)
+    out_png.mkdir(parents=True, exist_ok=True)
+    return base_output, out_tif, out_png
+
+
 def resolve_eval_output_dir(config_file: str, output_dir: str | None) -> Path:
     """Resolve and create evaluation output directory.
 

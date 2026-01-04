@@ -96,8 +96,8 @@ python vae_scripts/inference_vae.py \
 
 **Outputs:**
 
-- `results_tif/` - Raw TIF files (original | reconstruction)
-- `results_png/` - PNG files normalized for visualization
+- `<run_dir>/inference/<input_dir>/results_tif/` - Raw TIF files (original | reconstruction)
+- `<run_dir>/inference/<input_dir>/results_png/` - PNG files normalized for visualization
 - `splits/vae_split.json` - Train/val file lists for this run (seed, split ratio, subset, val_dir)
 
 ### evaluate_vae.py

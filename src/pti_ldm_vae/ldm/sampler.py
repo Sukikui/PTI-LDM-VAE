@@ -29,6 +29,7 @@ class LatentDiffusionSampler:
         schedule: DiffusionSchedule,
         *,
         concat_dentate: bool,
+        scale_factor: float = 1.0,
     ) -> None:
         self.unet = unet
         self.vae = vae
@@ -36,6 +37,7 @@ class LatentDiffusionSampler:
         self.metric_embed = metric_embed
         self.schedule = schedule
         self.concat_dentate = concat_dentate
+        self.scale_factor = float(scale_factor)
 
     @torch.no_grad()
     def __call__(
@@ -68,6 +70,7 @@ class LatentDiffusionSampler:
         self.metric_embed.eval()
         self.condition_builder.eval()
         z_cond = self.vae.encode_deterministic(dentate_images)
+        z_cond = z_cond * self.scale_factor
         metrics = regressor(dentate_images)
 
         rng = torch.Generator(device=device)
@@ -98,4 +101,4 @@ class LatentDiffusionSampler:
                 eps_uncond = self.unet(latent_input_uncond, timesteps=timestep_batch, context=context_uncond)
                 eps = eps_uncond + guidance_scale * (eps - eps_uncond)
             latent = self.schedule.step(eps, int(t.item()), latent, eta=eta)
-        return self.vae.decode_stage_2_outputs(latent)
+        return self.vae.decode_stage_2_outputs(latent / self.scale_factor)
