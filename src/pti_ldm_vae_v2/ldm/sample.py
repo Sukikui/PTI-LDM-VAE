@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 from collections.abc import Callable
 from pathlib import Path
@@ -7,42 +9,27 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from pti_ldm_vae.ldm_old import (
-    ConditionContextBuilder,
-    DiffusionSchedule,
-    LatentDiffusionSampler,
-    MetricConditioning,
-    build_frozen_regressor,
-    build_frozen_vae,
-    build_unet,
-)
-from pti_ldm_vae.utils.cli_common import (
-    build_inference_dataloader,
-    init_device_and_seed,
-    load_json_config,
-)
-from pti_ldm_vae.utils.vae_loader import load_vae_config
-from pti_ldm_vae.utils.visualization import normalize_batch_for_display
+from pti_ldm_vae_v2.vae.data import create_inference_dataloader
+from pti_ldm_vae_v2.vae.visualization import normalize_batch_for_display
+from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, init_device_and_seed, resolve_run_output_dir
+
+from .build import build_frozen_regressor, build_frozen_vae, build_unet
+from .conditioning import ConditionContextBuilder, MetricConditioning
+from .config import load_config, resolve_run_dir
+from .noise import read_noise_init_config
+from .sampler import LatentDiffusionSampler
+from .scheduler import DiffusionSchedule
 
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for LDM sampling.
 
     Returns:
-        Parsed arguments namespace.
+        argparse.Namespace: Parsed arguments namespace.
     """
     parser = argparse.ArgumentParser(description="Generate edentulous images with a trained LDM.")
     parser.add_argument("-c", "--config-file", required=True, help="Path to LDM JSON config.")
     parser.add_argument("--checkpoint", required=True, help="Path to trained LDM checkpoint.")
-    parser.add_argument("--num-steps", type=int, default=50, help="Number of diffusion steps.")
-    parser.add_argument("--eta", type=float, default=0.0, help="DDIM eta parameter.")
-    parser.add_argument("--guidance-scale", type=float, default=None, help="Classifier-free guidance scale.")
-    parser.add_argument("--drop-z", type=float, default=0.0, help="Drop probability for dentate latent conditioning.")
-    parser.add_argument("--drop-metrics", type=float, default=0.0, help="Drop probability for metric conditioning.")
-    parser.add_argument("--batch-size", type=int, default=4, help="Batch size for inference.")
-    parser.add_argument("--num-workers", type=int, default=4, help="Number of dataloader workers.")
-    parser.add_argument("--num-samples", type=int, default=None, help="Optional limit on processed images.")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--input-dir", required=True, help="Directory of dentate images to condition on.")
     parser.add_argument(
         "--edente-dir",
@@ -50,6 +37,13 @@ def parse_args() -> argparse.Namespace:
         help="Directory of edentulous ground-truth images (defaults to sibling 'edente').",
     )
     parser.add_argument("--output-dir", default=None, help="Output directory for generated samples.")
+    parser.add_argument("--num-steps", type=int, default=50, help="Number of diffusion steps.")
+    parser.add_argument("--eta", type=float, default=0.0, help="DDIM eta parameter.")
+    parser.add_argument("--guidance-scale", type=float, default=None, help="Classifier-free guidance scale.")
+    parser.add_argument("--drop-z", type=float, default=0.0, help="Drop probability for dentate latent conditioning.")
+    parser.add_argument("--drop-metrics", type=float, default=0.0, help="Drop probability for metric conditioning.")
+    parser.add_argument("--batch-size", type=int, default=4, help="Batch size for inference.")
+    parser.add_argument("--num-samples", type=int, default=None, help="Optional limit on processed images.")
     return parser.parse_args()
 
 
@@ -179,39 +173,17 @@ def save_results(
         Image.fromarray(png_uint8).save(out_png / f"{stem}.png")
 
 
-def _default_output_dirs(run_dir: Path, input_dir: str) -> tuple[Path, Path, Path]:
-    """Resolve default output directories for LDM sampling.
-
-    Args:
-        run_dir (Path): Root directory for the LDM run.
-        input_dir (str): Input directory passed to the sampler.
-
-    Returns:
-        tuple[Path, Path, Path]: Root output directory, TIF subfolder, PNG subfolder.
-    """
-    input_path = Path(input_dir).resolve()
-    try:
-        relative_input = input_path.relative_to(Path.cwd())
-    except ValueError:
-        relative_input = Path(str(input_path).lstrip("/"))
-
-    base_output = run_dir / "results" / relative_input
-    out_tif = base_output / "results_tif"
-    out_png = base_output / "results_png"
-    out_tif.mkdir(parents=True, exist_ok=True)
-    out_png.mkdir(parents=True, exist_ok=True)
-    return base_output, out_tif, out_png
-
-
 def main() -> None:
+    """Entry point for LDM sampling."""
     args = parse_args()
-    device = init_device_and_seed(args.seed)
-    config = load_json_config(args.config_file)
+    config = load_config(args.config_file)
+    data_cfg = dict(config.get("data", {}))
+    conditioning_cfg = dict(config.get("conditioning", {}))
+    diffusion_cfg = dict(config.get("diffusion", {}))
+    unet_cfg = dict(config.get("unet", {}))
+    noise_init = read_noise_init_config(config)
 
-    data_cfg = config.get("data", {})
-    conditioning_cfg = config.get("conditioning", {})
-    diffusion_cfg = config.get("diffusion", {})
-    unet_cfg = config.get("unet", {})
+    device = init_device_and_seed(config.get("seed"), print_monai_config=False)
 
     vae, latent_channels = build_frozen_vae(
         config_file=config["vae"]["config_file"],
@@ -226,7 +198,11 @@ def main() -> None:
         targets=config["regressor"]["targets"],
     )
 
+    use_dentate_latent = bool(conditioning_cfg.get("use_dentate_latent", True))
     concat_dentate = bool(conditioning_cfg.get("concat_dentate", True))
+    if not use_dentate_latent and concat_dentate:
+        print("[INFO] use_dentate_latent is False; forcing concat_dentate to False.")
+        concat_dentate = False
     unet_cfg = dict(unet_cfg)
     unet_cfg["in_channels"] = latent_channels * (2 if concat_dentate else 1)
     unet_cfg["out_channels"] = latent_channels
@@ -236,7 +212,7 @@ def main() -> None:
     metric_embed = MetricConditioning(
         input_dim=len(config["regressor"]["targets"]),
         embed_dim=cross_attention_dim,
-        dropout=0.0,
+        dropout=conditioning_cfg.get("metric_dropout", 0.0),
     ).to(device)
     condition_builder = ConditionContextBuilder(latent_channels, cross_attention_dim).to(device)
     scale_factor = load_ldm_checkpoint(unet, metric_embed, condition_builder, args.checkpoint)
@@ -256,31 +232,24 @@ def main() -> None:
         metric_embed=metric_embed,
         schedule=schedule,
         concat_dentate=concat_dentate,
+        use_dentate_latent=use_dentate_latent,
         scale_factor=scale_factor,
     )
 
-    # Reuse VAE dataloader helper for dentate images only
-    vae_config = load_vae_config(config["vae"]["config_file"])
-    dataloader, image_paths = build_inference_dataloader(
+    dataloader, image_paths = create_inference_dataloader(
         input_dir=args.input_dir,
-        config=vae_config,
+        patch_size=tuple(data_cfg["patch_size"]),
         batch_size=args.batch_size,
         num_samples=args.num_samples,
-        num_workers=args.num_workers,
+        num_workers=int(data_cfg.get("num_workers", DEFAULT_NUM_WORKERS)),
     )
     edente_dir = _resolve_edente_dir(args.input_dir, args.edente_dir)
     transform = dataloader.dataset.transform
 
-    run_dir = Path(config.get("run_dir", "runs/ldm_run"))
-    if args.output_dir is None:
-        output_dir, out_tif, out_png = _default_output_dirs(run_dir, args.input_dir)
-    else:
-        output_dir = Path(args.output_dir)
-        out_tif = output_dir / "results_tif"
-        out_png = output_dir / "results_png"
-        out_tif.mkdir(parents=True, exist_ok=True)
-        out_png.mkdir(parents=True, exist_ok=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = resolve_run_dir(config, args.config_file)
+    output_dir = resolve_run_output_dir(run_dir, args.input_dir, args.output_dir, "results")
+    out_tif = output_dir / "results_tif"
+    out_png = output_dir / "results_png"
     out_tif.mkdir(parents=True, exist_ok=True)
     out_png.mkdir(parents=True, exist_ok=True)
 
@@ -298,11 +267,17 @@ def main() -> None:
             drop_z_prob=args.drop_z,
             drop_metrics_prob=args.drop_metrics,
             eta=args.eta,
+            init_mode=str(noise_init["init_mode"]),
+            noise_top=float(noise_init["noise_top"]),
+            noise_bottom=float(noise_init["noise_bottom"]),
+            noise_exponent=float(noise_init["noise_exponent"]),
+            noise_direction=str(noise_init["noise_direction"]),
+            noise_weight=float(noise_init["noise_weight"]),
         )
         save_results(generated, batch, edente_batch, batch_paths, out_tif, out_png)
         idx += batch_size
 
-    print(f"✅ Generated {idx} samples. Outputs: {output_dir}")
+    print(f"[INFO] Generated {idx} samples. Outputs: {output_dir}")
 
 
 if __name__ == "__main__":

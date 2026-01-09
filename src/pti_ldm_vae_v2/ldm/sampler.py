@@ -4,20 +4,23 @@ from collections.abc import Callable
 
 import torch
 
-from pti_ldm_vae.ldm.conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
-from pti_ldm_vae.ldm.scheduler import DiffusionSchedule
+from .conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
+from .noise import create_initial_latent
+from .scheduler import DiffusionSchedule
 
 
 class LatentDiffusionSampler:
     """DDIM sampler for latent diffusion with metric + spatial conditioning.
 
     Args:
-        unet: Trained diffusion UNet.
-        vae: Frozen VAE model.
-        condition_builder: Projects dentate latents to attention tokens.
-        metric_embed: Embeds metric vectors to tokens.
-        schedule: DiffusionSchedule instance.
-        concat_dentate: When True, concatenate dentate latent to UNet input channels.
+        unet (torch.nn.Module): Trained diffusion UNet.
+        vae (torch.nn.Module): Frozen VAE model.
+        condition_builder (ConditionContextBuilder): Projects dentate latents to attention tokens.
+        metric_embed (MetricConditioning): Embeds metric vectors to tokens.
+        schedule (DiffusionSchedule): DiffusionSchedule instance.
+        concat_dentate (bool): Whether to concatenate dentate latents to UNet input channels.
+        use_dentate_latent (bool): Whether to include dentate latents in cross-attention context.
+        scale_factor (float): Latent scaling factor used during training.
     """
 
     def __init__(
@@ -29,6 +32,7 @@ class LatentDiffusionSampler:
         schedule: DiffusionSchedule,
         *,
         concat_dentate: bool,
+        use_dentate_latent: bool,
         scale_factor: float = 1.0,
     ) -> None:
         self.unet = unet
@@ -37,6 +41,7 @@ class LatentDiffusionSampler:
         self.metric_embed = metric_embed
         self.schedule = schedule
         self.concat_dentate = concat_dentate
+        self.use_dentate_latent = use_dentate_latent
         self.scale_factor = float(scale_factor)
 
     @torch.no_grad()
@@ -49,6 +54,12 @@ class LatentDiffusionSampler:
         drop_z_prob: float = 0.0,
         drop_metrics_prob: float = 0.0,
         eta: float = 0.0,
+        init_mode: str = "pure_noise",
+        noise_top: float = 1.0,
+        noise_bottom: float = 0.0,
+        noise_exponent: float = 1.0,
+        noise_direction: str = "vertical",
+        noise_weight: float = 1.0,
     ) -> torch.Tensor:
         """Generate edentulous reconstructions from dentate images.
 
@@ -60,6 +71,12 @@ class LatentDiffusionSampler:
             drop_z_prob (float): Dropout prob. for dentate latent during sampling.
             drop_metrics_prob (float): Dropout prob. for metrics during sampling.
             eta (float): DDIM noise scale.
+            init_mode (str): ``pure_noise`` or ``dentate_noisy`` initialization.
+            noise_top (float): Noise scale at the top of the image.
+            noise_bottom (float): Noise scale at the bottom of the image.
+            noise_exponent (float): Exponent to shape the vertical noise gradient.
+            noise_direction (str): ``vertical`` or ``horizontal`` gradient direction.
+            noise_weight (float): Global noise multiplier.
 
         Returns:
             torch.Tensor: Generated edentulous images decoded by the VAE.
@@ -71,19 +88,41 @@ class LatentDiffusionSampler:
         self.condition_builder.eval()
         z_cond = self.vae.encode_deterministic(dentate_images)
         z_cond = z_cond * self.scale_factor
+        z_cond_base = z_cond
         metrics = regressor(dentate_images)
 
-        rng = torch.Generator(device=device)
         z_cond, metrics = apply_condition_dropout(
-            z_cond, metrics, drop_z_prob, drop_metrics_prob, lambda shape: torch.rand(shape, device=device)
+            z_cond,
+            metrics,
+            drop_z_prob,
+            drop_metrics_prob,
+            lambda shape: torch.rand(shape, device=device),
         )
         metric_tokens = self.metric_embed(metrics)
-        context = self.condition_builder(z_cond, metric_tokens)
+        if self.use_dentate_latent:
+            context = self.condition_builder(z_cond, metric_tokens)
+        else:
+            context = metric_tokens.unsqueeze(1)
 
-        timesteps = torch.linspace(len(self.schedule.alphas) - 1, 0, num_steps, device=device, dtype=torch.long).long()
-        latent = torch.randn_like(z_cond)
+        timesteps = torch.linspace(
+            len(self.schedule.alphas) - 1,
+            0,
+            num_steps,
+            device=device,
+            dtype=torch.long,
+        ).long()
+        latent = create_initial_latent(
+            z_cond_base,
+            init_mode=init_mode,
+            noise_top=noise_top,
+            noise_bottom=noise_bottom,
+            noise_exponent=noise_exponent,
+            noise_direction=noise_direction,
+            noise_weight=noise_weight,
+        )
 
         for idx, t in enumerate(timesteps):
+            prev_t = timesteps[idx + 1] if idx + 1 < len(timesteps) else torch.tensor(-1, device=device)
             latent_input = torch.cat([latent, z_cond], dim=1) if self.concat_dentate else latent
             timestep_batch = t.unsqueeze(0).repeat(latent.shape[0])
             eps = self.unet(latent_input, timesteps=timestep_batch, context=context)
@@ -93,12 +132,15 @@ class LatentDiffusionSampler:
                     metrics,
                     drop_z_prob=1.0,
                     drop_metrics_prob=1.0,
-                    sampler=lambda s: torch.zeros(s, device=device),
+                    sampler=lambda shape: torch.zeros(shape, device=device),
                 )
                 metric_tokens_uncond = self.metric_embed(metrics_uncond)
-                context_uncond = self.condition_builder(z_zero, metric_tokens_uncond)
+                if self.use_dentate_latent:
+                    context_uncond = self.condition_builder(z_zero, metric_tokens_uncond)
+                else:
+                    context_uncond = metric_tokens_uncond.unsqueeze(1)
                 latent_input_uncond = torch.cat([latent, z_zero], dim=1) if self.concat_dentate else latent
                 eps_uncond = self.unet(latent_input_uncond, timesteps=timestep_batch, context=context_uncond)
                 eps = eps_uncond + guidance_scale * (eps - eps_uncond)
-            latent = self.schedule.step(eps, int(t.item()), latent, eta=eta)
+            latent = self.schedule.step_with_prev(eps, int(t.item()), int(prev_t.item()), latent, eta=eta)
         return self.vae.decode_stage_2_outputs(latent / self.scale_factor)

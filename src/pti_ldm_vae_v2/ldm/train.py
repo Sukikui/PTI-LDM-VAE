@@ -1,9 +1,9 @@
+from __future__ import annotations
+
 import argparse
 import json
-import os
 import time
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 
 import torch
@@ -12,28 +12,26 @@ from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from tqdm import tqdm
 
-from pti_ldm_vae.ldm_old import (
-    ConditionContextBuilder,
-    DiffusionSchedule,
-    LDMTrainer,
-    MetricConditioning,
-    TrainerState,
-    build_frozen_regressor,
-    build_frozen_vae,
-    build_unet,
-    create_ldm_dataloaders,
-)
-from pti_ldm_vae.utils.cli_common import load_json_config
-from pti_ldm_vae.utils.visualization import normalize_batch_for_display
+from pti_ldm_vae_v2.vae.visualization import normalize_batch_for_display
+from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, init_device_and_seed
+
+from .build import build_frozen_regressor, build_frozen_vae, build_unet
+from .conditioning import ConditionContextBuilder, MetricConditioning
+from .config import apply_train_overrides, load_config, resolve_run_dir, resolve_run_dirs
+from .data import create_ldm_dataloaders
+from .noise import create_initial_latent, read_noise_init_config
+from .scheduler import DiffusionSchedule
+from .trainer import LDMTrainer, TrainerState
+from .wandb import init_wandb
 
 load_dotenv()
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments.
+    """Parse CLI arguments for LDM training.
 
     Returns:
-        Parsed arguments namespace.
+        argparse.Namespace: Parsed arguments.
     """
     parser = argparse.ArgumentParser(description="Train a latent diffusion model conditioned on dentate latents.")
     parser.add_argument("-c", "--config-file", required=True, help="Path to LDM JSON config.")
@@ -41,47 +39,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=None, help="Override batch size.")
     parser.add_argument("--lr", type=float, default=None, help="Override learning rate.")
     return parser.parse_args()
-
-
-def set_seed(seed: int | None) -> None:
-    """Set random seeds for reproducibility.
-
-    Args:
-        seed: Optional seed value.
-    """
-    if seed is None:
-        return
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-
-def prepare_device() -> torch.device:
-    """Select CUDA if available, otherwise CPU.
-
-    Returns:
-        Selected torch device.
-    """
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def override_train_cfg(train_cfg: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
-    """Apply CLI overrides to training configuration.
-
-    Args:
-        train_cfg: Base training configuration.
-        args: Parsed CLI arguments.
-
-    Returns:
-        Training configuration with overrides applied.
-    """
-    if args.max_epochs is not None:
-        train_cfg["max_epochs"] = args.max_epochs
-    if args.batch_size is not None:
-        train_cfg["batch_size"] = args.batch_size
-    if args.lr is not None:
-        train_cfg["lr"] = args.lr
-    return train_cfg
 
 
 def compute_scale_factor(
@@ -121,6 +78,13 @@ def log_sanity_samples(
     metric_embed: MetricConditioning,
     schedule: DiffusionSchedule,
     concat_dentate: bool,
+    use_dentate_latent: bool,
+    init_mode: str,
+    noise_top: float,
+    noise_bottom: float,
+    noise_exponent: float,
+    noise_direction: str,
+    noise_weight: float,
     scale_factor: float,
     batch: tuple[torch.Tensor, torch.Tensor],
     batch_idx: int,
@@ -141,6 +105,13 @@ def log_sanity_samples(
         metric_embed (MetricConditioning): Conditioning module for metrics.
         schedule (DiffusionSchedule): Diffusion schedule.
         concat_dentate (bool): Whether to concatenate dentate latents to the UNet input.
+        use_dentate_latent (bool): Whether to include dentate latents in cross-attention context.
+        init_mode (str): ``pure_noise`` or ``dentate_noisy`` initialization.
+        noise_top (float): Noise scale at the top of the image.
+        noise_bottom (float): Noise scale at the bottom of the image.
+        noise_exponent (float): Exponent to shape the vertical noise gradient.
+        noise_direction (str): ``vertical`` or ``horizontal`` gradient direction.
+        noise_weight (float): Global noise multiplier.
         scale_factor (float): Latent scale factor (1 / std).
         batch (tuple[torch.Tensor, torch.Tensor]): Batch of (edentulous, dentate) images.
         batch_idx (int): Validation batch index.
@@ -148,6 +119,7 @@ def log_sanity_samples(
         step_indices (list[int]): 1-based sampling steps to visualize.
         max_samples (int): Max number of samples to log per batch.
         epoch (int): Current epoch index.
+        log_step (int): Global training step for W&B logging.
     """
     if wandb_run is None:
         return
@@ -170,9 +142,20 @@ def log_sanity_samples(
         z_cond = vae.encode_deterministic(dentate) * scale_factor
         metrics = regressor(dentate)
         metric_tokens = metric_embed(metrics)
-        context = condition_builder(z_cond, metric_tokens)
+        if use_dentate_latent:
+            context = condition_builder(z_cond, metric_tokens)
+        else:
+            context = metric_tokens.unsqueeze(1)
 
-        latent = torch.randn_like(z_cond)
+        latent = create_initial_latent(
+            z_cond,
+            init_mode=init_mode,
+            noise_top=noise_top,
+            noise_bottom=noise_bottom,
+            noise_exponent=noise_exponent,
+            noise_direction=noise_direction,
+            noise_weight=noise_weight,
+        )
         timesteps = torch.linspace(
             schedule.alphas.shape[0] - 1, 0, num_steps, device=device, dtype=torch.long
         ).long()
@@ -207,74 +190,40 @@ def log_sanity_samples(
                 )
 
 
-def init_wandb(wandb_cfg: dict[str, Any], run_dir: Path, train_cfg: dict[str, Any], config_path: str):
-    """Initialize Weights & Biases if enabled in config."""
-    if not wandb_cfg.get("enabled", False):
-        return None
-    try:
-        import wandb  # type: ignore
-    except ImportError:
-        print("[WARN] W&B enabled but package 'wandb' is not installed.")
-        return None
-
-    project = os.getenv("WANDB_PROJECT", wandb_cfg.get("project", "pti-ldm_old-vae"))
-    entity = wandb_cfg.get("entity") or os.getenv("WANDB_ENTITY")
-    run_name = wandb_cfg.get("name") or run_dir.name
-    tags = wandb_cfg.get("tags", [])
-    notes = wandb_cfg.get("notes", "")
-
-    run = wandb.init(
-        project=project,
-        entity=entity,
-        name=run_name,
-        tags=tags,
-        notes=notes,
-        dir=str(run_dir),
-        config={
-            "lr": train_cfg.get("lr"),
-            "batch_size": train_cfg.get("batch_size"),
-            "max_epochs": train_cfg.get("max_epochs"),
-            "clip_grad": train_cfg.get("clip_grad"),
-            "ema_decay": train_cfg.get("ema_decay"),
-            "config_file": config_path,
-        },
-    )
-    try:
-        run.config.update({"full_config_json": load_json_config(config_path)}, allow_val_change=True)
-    except Exception as exc:
-        print(f"[WARN] Could not attach full config to W&B: {exc}")
-    return run
-
-
-def main() -> None:
+def train() -> None:
+    """Entry point for training the latent diffusion model."""
     args = parse_args()
-    config = load_json_config(args.config_file)
+    config = load_config(args.config_file)
 
-    device = prepare_device()
-    set_seed(config.get("seed", 42))
+    data_cfg = dict(config.get("data", {}))
+    train_cfg = apply_train_overrides(
+        config.get("train", {}),
+        batch_size=args.batch_size,
+        lr=args.lr,
+        max_epochs=args.max_epochs,
+    )
+    conditioning_cfg = dict(config.get("conditioning", {}))
+    diffusion_cfg = dict(config.get("diffusion", {}))
+    unet_cfg = dict(config.get("unet", {}))
+    noise_init = read_noise_init_config(config)
 
-    data_cfg = config.get("data", {})
-    train_cfg = override_train_cfg(config.get("train", {}), args)
-    conditioning_cfg = config.get("conditioning", {})
-    diffusion_cfg = config.get("diffusion", {})
-    unet_cfg = config.get("unet", {})
-    run_dir = Path(config.get("run_dir", "runs/ldm_run"))
-    weights_dir = run_dir / "trained_weights"
-    weights_dir.mkdir(parents=True, exist_ok=True)
-    wandb_run = init_wandb(config.get("wandb", {}), run_dir, train_cfg, args.config_file)
+    run_dir = resolve_run_dir(config, args.config_file)
+    _, weights_dir, splits_dir = resolve_run_dirs(run_dir)
 
-    patch_size = tuple(data_cfg["patch_size"])
+    seed = data_cfg.get("seed", config.get("seed"))
+    device = init_device_and_seed(seed, print_monai_config=False)
+    wandb_run = init_wandb(config, run_dir=run_dir, train_cfg=train_cfg, config_path=args.config_file)
+
     train_loader, val_loader, train_pairs, val_pairs = create_ldm_dataloaders(
         data_base_dir=data_cfg["data_base_dir"],
         batch_size=train_cfg["batch_size"],
-        patch_size=patch_size,
+        patch_size=tuple(data_cfg["patch_size"]),
         train_split=float(data_cfg.get("train_split", 0.9)),
-        num_workers=int(data_cfg.get("num_workers", 4)),
-        seed=data_cfg.get("seed", config.get("seed", 42)),
+        num_workers=int(data_cfg.get("num_workers", DEFAULT_NUM_WORKERS)),
+        seed=seed,
         subset_size=data_cfg.get("subset_size"),
         val_dir=data_cfg.get("val_dir"),
         cache_rate=float(data_cfg.get("cache_rate", 0.0)),
-        distributed=False,
     )
 
     vae, latent_channels = build_frozen_vae(
@@ -286,12 +235,16 @@ def main() -> None:
         config_file=config["regressor"]["config_file"],
         checkpoint=config["regressor"]["checkpoint"],
         device=device,
-        patch_size=patch_size,
+        patch_size=tuple(data_cfg["patch_size"]),
         targets=config["regressor"]["targets"],
     )
 
+    use_dentate_latent = bool(conditioning_cfg.get("use_dentate_latent", True))
     concat_dentate = bool(conditioning_cfg.get("concat_dentate", True))
-    unet_config = deepcopy(unet_cfg)
+    if not use_dentate_latent and concat_dentate:
+        print("[INFO] use_dentate_latent is False; forcing concat_dentate to False.")
+        concat_dentate = False
+    unet_config = dict(unet_cfg)
     unet_config["in_channels"] = latent_channels * (2 if concat_dentate else 1)
     unet_config["out_channels"] = latent_channels
 
@@ -338,6 +291,13 @@ def main() -> None:
         scaler=scaler,
         device=device,
         concat_dentate=concat_dentate,
+        use_dentate_latent=use_dentate_latent,
+        noise_init_mode=str(noise_init["init_mode"]),
+        noise_top=float(noise_init["noise_top"]),
+        noise_bottom=float(noise_init["noise_bottom"]),
+        noise_exponent=float(noise_init["noise_exponent"]),
+        noise_direction=str(noise_init["noise_direction"]),
+        noise_weight=float(noise_init["noise_weight"]),
         drop_z_prob=conditioning_cfg.get("condition_dropout", 0.0),
         drop_metrics_prob=conditioning_cfg.get("metrics_dropout", 0.0),
         scale_factor=scale_factor,
@@ -347,14 +307,15 @@ def main() -> None:
     )
 
     state = TrainerState(epoch=0, global_step=0, best_val_loss=float("inf"))
-    max_epochs = train_cfg["max_epochs"]
-    val_interval = train_cfg.get("val_interval", 1)
-    sanity_cfg = config.get("sanity_sampling", {})
+    max_epochs = int(train_cfg["max_epochs"])
+    val_interval = int(train_cfg.get("val_interval", 1))
+    sanity_cfg = dict(config.get("sanity_sampling", {}))
     sanity_enabled = bool(sanity_cfg.get("enabled", True))
     sanity_every = int(sanity_cfg.get("every", 20))
     sanity_steps = int(sanity_cfg.get("num_steps", 50))
     sanity_step_indices = sanity_cfg.get("step_indices", [1, 10, 20, 40, 50])
     sanity_max_samples = int(sanity_cfg.get("max_samples", 1))
+
     for epoch in range(max_epochs):
         epoch_start = time.time()
         trainer.unet.train()
@@ -429,6 +390,13 @@ def main() -> None:
                             metric_embed=trainer.metric_embed,
                             schedule=schedule,
                             concat_dentate=concat_dentate,
+                            use_dentate_latent=use_dentate_latent,
+                            init_mode=str(noise_init["init_mode"]),
+                            noise_top=float(noise_init["noise_top"]),
+                            noise_bottom=float(noise_init["noise_bottom"]),
+                            noise_exponent=float(noise_init["noise_exponent"]),
+                            noise_direction=str(noise_init["noise_direction"]),
+                            noise_weight=float(noise_init["noise_weight"]),
                             scale_factor=scale_factor,
                             batch=batch,
                             batch_idx=batch_idx,
@@ -443,7 +411,6 @@ def main() -> None:
         if wandb_run is not None:
             wandb_run.log({"time/epoch": epoch_time, "epoch": epoch + 1})
 
-    splits_dir = run_dir / "splits"
     splits_dir.mkdir(parents=True, exist_ok=True)
     with open(splits_dir / "ldm_pairs.json", "w", encoding="utf-8") as handle:
         json.dump({"train": train_pairs, "val": val_pairs}, handle, indent=2)
@@ -452,4 +419,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    train()

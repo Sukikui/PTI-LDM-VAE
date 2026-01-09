@@ -9,8 +9,8 @@ import torch.nn.functional as F
 from torch.amp import GradScaler, autocast
 from torch.optim import Optimizer
 
-from pti_ldm_vae.ldm.conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
-from pti_ldm_vae.ldm.scheduler import DiffusionSchedule
+from pti_ldm_vae.ldm_old.conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
+from pti_ldm_vae.ldm_old.scheduler import DiffusionSchedule
 
 
 @dataclass

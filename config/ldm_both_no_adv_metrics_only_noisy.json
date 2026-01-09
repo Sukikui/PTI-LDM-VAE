@@ -1,5 +1,5 @@
 {
-  "run_dir": "./runs/ldm_both_no_adv",
+  "run_dir": "./runs/ldm_both_no_adv_metrics_only_noisy",
   "seed": 42,
   "data": {
     "data_base_dir": "./data/train_val",
@@ -32,18 +32,11 @@
     "norm_num_groups": 32
   },
   "conditioning": {
-    "use_dentate_latent": true,
+    "use_dentate_latent": false,
     "concat_dentate": false,
     "condition_dropout": 0.1,
     "metrics_dropout": 0.1,
     "metric_dropout": 0.0
-  },
-  "noise_init": {
-    "init_mode": "pure_noise",
-    "noise_top": 1.0,
-    "noise_bottom": 0.0,
-    "noise_exponent": 1.0,
-    "noise_weight": 1.0
   },
   "diffusion": {
     "num_train_timesteps": 1000,
@@ -60,11 +53,26 @@
     "clip_grad": 1.0,
     "ema_decay": 0.999
   },
+  "sanity_sampling": {
+    "enabled": true,
+    "every": 1,
+    "num_steps": 50,
+    "step_indices": [1, 10, 20, 40, 50],
+    "max_samples": 1
+  },
+  "noise_init": {
+    "init_mode": "dentate_noisy",
+    "noise_top": 1.0,
+    "noise_bottom": 0.2,
+    "noise_exponent": 1.0,
+    "noise_direction": "horizontal",
+    "noise_weight": 0.025
+  },
   "wandb": {
     "enabled": true,
     "project": "pti-ldm-vae",
     "entity": null,
-    "name": "ldm_both_no_adv",
-    "tags": ["ldm", "both_no_adv", "unet_32-64-128", "latent4", "cond_metric6", "concat_false"]
+    "name": "ldm_both_no_adv_metrics_only_noisy",
+    "tags": ["ldm", "metrics_only", "noisy_init", "unet_32-64-128", "latent4", "cond_metric6", "concat_false"]
   }
 }

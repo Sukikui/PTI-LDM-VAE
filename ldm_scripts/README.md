@@ -103,7 +103,11 @@ python ldm_scripts/sample_ldm.py \
   --guidance-scale 3.0
 ```
 
-Sorties (par défaut) : `runs/<run_dir>/results/<input_dir>/results_tif/` (concat dente|edente synth) et `results_png/` (version normalisee).
+Le script cherche les images édentées ground-truth dans un dossier `edente` correspondant (ex: `data/dente` -> `data/edente`).
+Si l’inférence automatique ne marche pas, fournir `--edente-dir`.
+
+Sorties (par défaut) : `runs/<run_dir>/results/<input_dir>/results_tif/` et `results_png/`.
+Chaque fichier reprend le nom d’entrée, et contient un triptyque horizontal : `dente (gt) | edente (gt) | edente (pred)`.
 Utiliser `--output-dir` pour choisir un dossier different (les sous-dossiers `results_tif/` et `results_png/` sont crees).
 
 ## Weights & Biases
@@ -123,6 +127,7 @@ Utiliser `--output-dir` pour choisir un dossier different (les sous-dossiers `re
 - VAE et tête de régression sont gelés (`encode_stage_2_inputs` pour la cible édentée, `encode_deterministic` pour le conditionnement denté).
 - Metrics utilisées telles que prédites par la tête (espace normalisé si la tête a été entraînée ainsi).
 - Scheduler simplifié DDPM linéaire ; sampling DDIM déterministe (`eta=0`), bruit stochastique si `eta>0`.
+  Les pas de sampling non consécutifs sont pris en charge pour `num_steps < num_train_timesteps`.
 - Guidance : activer `condition_dropout`/`metrics_dropout` a l'entrainement puis utiliser `--guidance-scale` au sampling.
 - Les scripts de generation chargent aussi les poids du conditionnement; si un ancien checkpoint ne les contient pas,
   un warning est affiche et les modules sont initialises par defaut.
