@@ -8,10 +8,11 @@ from dash import Dash, Input, Output, dcc, html
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from pti_ldm_vae_v2.vae_regression_common import build_preprocess_transform, init_device_and_seed
+from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
 
 from .build import build_frozen_vae
 from .config import load_config
+from .data import build_ldm_inference_transform
 from .noise import build_gradient_noise_mask, create_initial_latent, read_noise_init_config
 
 
@@ -126,7 +127,6 @@ def main() -> None:
     """Entry point for noisy latent visualization."""
     args = parse_args()
     config = load_config(args.config_file)
-    data_cfg = dict(config.get("data", {}))
     noise_init = read_noise_init_config(config)
 
     device = init_device_and_seed(config.get("seed"), print_monai_config=False)
@@ -136,8 +136,7 @@ def main() -> None:
         device=device,
     )
 
-    patch_size = tuple(data_cfg["patch_size"])
-    transform = build_preprocess_transform(patch_size)
+    transform = build_ldm_inference_transform()
     image = transform(str(args.input_path))
     batch = image.unsqueeze(0).to(device)
 

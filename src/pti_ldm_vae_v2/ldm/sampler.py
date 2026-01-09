@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import torch
+from monai.networks.schedulers import DDIMScheduler
 
 from .conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
 from .noise import create_initial_latent
-from .scheduler import DiffusionSchedule
 
 
 class LatentDiffusionSampler:
@@ -17,7 +17,7 @@ class LatentDiffusionSampler:
         vae (torch.nn.Module): Frozen VAE model.
         condition_builder (ConditionContextBuilder): Projects dentate latents to attention tokens.
         metric_embed (MetricConditioning): Embeds metric vectors to tokens.
-        schedule (DiffusionSchedule): DiffusionSchedule instance.
+        ddim_scheduler (DDIMScheduler): DDIM scheduler configured for sampling.
         concat_dentate (bool): Whether to concatenate dentate latents to UNet input channels.
         use_dentate_latent (bool): Whether to include dentate latents in cross-attention context.
         scale_factor (float): Latent scaling factor used during training.
@@ -29,7 +29,7 @@ class LatentDiffusionSampler:
         vae: torch.nn.Module,
         condition_builder: ConditionContextBuilder,
         metric_embed: MetricConditioning,
-        schedule: DiffusionSchedule,
+        ddim_scheduler: DDIMScheduler,
         *,
         concat_dentate: bool,
         use_dentate_latent: bool,
@@ -39,7 +39,7 @@ class LatentDiffusionSampler:
         self.vae = vae
         self.condition_builder = condition_builder
         self.metric_embed = metric_embed
-        self.schedule = schedule
+        self.ddim_scheduler = ddim_scheduler
         self.concat_dentate = concat_dentate
         self.use_dentate_latent = use_dentate_latent
         self.scale_factor = float(scale_factor)
@@ -104,13 +104,8 @@ class LatentDiffusionSampler:
         else:
             context = metric_tokens.unsqueeze(1)
 
-        timesteps = torch.linspace(
-            len(self.schedule.alphas) - 1,
-            0,
-            num_steps,
-            device=device,
-            dtype=torch.long,
-        ).long()
+        self.ddim_scheduler.set_timesteps(num_steps, device=device)
+        timesteps = self.ddim_scheduler.timesteps
         latent = create_initial_latent(
             z_cond_base,
             init_mode=init_mode,
@@ -121,8 +116,7 @@ class LatentDiffusionSampler:
             noise_weight=noise_weight,
         )
 
-        for idx, t in enumerate(timesteps):
-            prev_t = timesteps[idx + 1] if idx + 1 < len(timesteps) else torch.tensor(-1, device=device)
+        for t in timesteps:
             latent_input = torch.cat([latent, z_cond], dim=1) if self.concat_dentate else latent
             timestep_batch = t.unsqueeze(0).repeat(latent.shape[0])
             eps = self.unet(latent_input, timesteps=timestep_batch, context=context)
@@ -142,5 +136,5 @@ class LatentDiffusionSampler:
                 latent_input_uncond = torch.cat([latent, z_zero], dim=1) if self.concat_dentate else latent
                 eps_uncond = self.unet(latent_input_uncond, timesteps=timestep_batch, context=context_uncond)
                 eps = eps_uncond + guidance_scale * (eps - eps_uncond)
-            latent = self.schedule.step_with_prev(eps, int(t.item()), int(prev_t.item()), latent, eta=eta)
+            latent, _ = self.ddim_scheduler.step(eps, int(t.item()), latent, eta=eta)
         return self.vae.decode_stage_2_outputs(latent / self.scale_factor)

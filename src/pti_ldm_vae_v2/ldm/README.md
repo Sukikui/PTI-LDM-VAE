@@ -17,6 +17,9 @@ Train (metrics-only conditioning + noisy dentate init):
 python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv_metrics_only_noisy.json
 ```
 
+This config mirrors the legacy UNet size (channels 32-64-128-256, cross-attn dim 512) and DDPM betas
+(0.0015 → 0.0195) while keeping the new conditioning behavior.
+
 Sample (inference):
 
 ```bash
@@ -61,6 +64,16 @@ Configuration (`noise_init` block):
 The same `noise_init` settings are used during training to build the noise input when `init_mode` is
 ``dentate_noisy``, so train and inference stay aligned.
 
+Configuration (`diffusion` + `train` blocks):
+- `diffusion.schedule`: Noise schedule string passed to MONAI schedulers (default `scaled_linear_beta`).
+- `train.optimizer`: `adam` (default) or `adamw`.
+- `train.lr_scheduler_milestones`: Optional list of epochs for `MultiStepLR`.
+- `train.lr_scheduler_gamma`: `MultiStepLR` decay factor.
+
+Training uses MONAI `DDPMScheduler` (forward noising). Sampling uses MONAI `DDIMScheduler`.
+
+Note: LDM inputs are **not resized**. All images in a batch must share the same spatial size.
+
 Noisy latent visualization:
 
 ```bash
@@ -68,7 +81,7 @@ python -m pti_ldm_vae_v2.ldm.visualize_noisy_latent \
   -c config/ldm_both_no_adv.json \
   --input-path data/test/dente/example.tif
 ```
-This starts a Dash app with a channel selector. It uses only the VAE encoder plus the `sampling` block.
+This starts a Dash app with a channel selector. It uses only the VAE encoder plus the `noise_init` block.
 
 ## Outputs
 

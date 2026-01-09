@@ -6,12 +6,12 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
+from monai.networks.schedulers import DDPMScheduler
 from torch.amp import GradScaler, autocast
 from torch.optim import Optimizer
 
 from .conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
 from .noise import create_initial_latent
-from .scheduler import DiffusionSchedule
 
 
 @dataclass
@@ -34,7 +34,7 @@ class LDMTrainer:
         regressor: Callable[[torch.Tensor], torch.Tensor],
         condition_builder: ConditionContextBuilder,
         metric_embed: MetricConditioning,
-        schedule: DiffusionSchedule,
+        noise_scheduler: DDPMScheduler,
         optimizer: Optimizer,
         scaler: GradScaler,
         device: torch.device,
@@ -58,7 +58,7 @@ class LDMTrainer:
         self.regressor = regressor
         self.condition_builder = condition_builder
         self.metric_embed = metric_embed
-        self.schedule = schedule
+        self.noise_scheduler = noise_scheduler
         self.optimizer = optimizer
         self.scaler = scaler
         self.device = device
@@ -103,7 +103,7 @@ class LDMTrainer:
         condition_images = condition_images.to(self.device)
 
         with torch.no_grad():
-            z_target = self.vae.encode_stage_2_inputs(images)
+            z_target = self.vae.encode_deterministic(images)
             z_condition = self.vae.encode_deterministic(condition_images)
             metrics = self.regressor(condition_images)
 
@@ -133,12 +133,12 @@ class LDMTrainer:
 
         timesteps = torch.randint(
             low=0,
-            high=self.schedule.alphas_cumprod.shape[0],
+            high=self.noise_scheduler.num_train_timesteps,
             size=(images.shape[0],),
             device=self.device,
             dtype=torch.long,
         )
-        noisy_latent = self.schedule.add_noise(z_target, noise, timesteps)
+        noisy_latent = self.noise_scheduler.add_noise(z_target, noise, timesteps)
         unet_input = torch.cat([noisy_latent, z_condition], dim=1) if self.concat_dentate else noisy_latent
 
         self.optimizer.zero_grad(set_to_none=True)
@@ -193,12 +193,12 @@ class LDMTrainer:
         )
         timesteps = torch.randint(
             low=0,
-            high=self.schedule.alphas_cumprod.shape[0],
+            high=self.noise_scheduler.num_train_timesteps,
             size=(images.shape[0],),
             device=self.device,
             dtype=torch.long,
         )
-        noisy_latent = self.schedule.add_noise(z_target, noise, timesteps)
+        noisy_latent = self.noise_scheduler.add_noise(z_target, noise, timesteps)
         unet_input = torch.cat([noisy_latent, z_condition], dim=1) if self.concat_dentate else noisy_latent
         noise_pred = self.unet(unet_input, timesteps=timesteps, context=context)
         return F.mse_loss(noise_pred.float(), noise.float()).detach()

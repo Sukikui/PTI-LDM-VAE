@@ -9,16 +9,16 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from pti_ldm_vae_v2.vae.data import create_inference_dataloader
 from pti_ldm_vae_v2.vae.visualization import normalize_batch_for_display
 from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, init_device_and_seed, resolve_run_output_dir
 
 from .build import build_frozen_regressor, build_frozen_vae, build_unet
 from .conditioning import ConditionContextBuilder, MetricConditioning
 from .config import load_config, resolve_run_dir
+from .data import create_ldm_inference_dataloader
 from .noise import read_noise_init_config
 from .sampler import LatentDiffusionSampler
-from .scheduler import DiffusionSchedule
+from .scheduler import build_ddim_scheduler
 
 
 def parse_args() -> argparse.Namespace:
@@ -218,27 +218,21 @@ def main() -> None:
     scale_factor = load_ldm_checkpoint(unet, metric_embed, condition_builder, args.checkpoint)
     unet.eval()
 
-    schedule = DiffusionSchedule.linear(
-        timesteps=diffusion_cfg.get("num_train_timesteps", 1000),
-        beta_start=diffusion_cfg.get("beta_start", 0.00085),
-        beta_end=diffusion_cfg.get("beta_end", 0.012),
-        device=device,
-    )
+    ddim_scheduler = build_ddim_scheduler(diffusion_cfg, args.num_steps, device)
 
     sampler = LatentDiffusionSampler(
         unet=unet,
         vae=vae,
         condition_builder=condition_builder,
         metric_embed=metric_embed,
-        schedule=schedule,
+        ddim_scheduler=ddim_scheduler,
         concat_dentate=concat_dentate,
         use_dentate_latent=use_dentate_latent,
         scale_factor=scale_factor,
     )
 
-    dataloader, image_paths = create_inference_dataloader(
+    dataloader, image_paths = create_ldm_inference_dataloader(
         input_dir=args.input_dir,
-        patch_size=tuple(data_cfg["patch_size"]),
         batch_size=args.batch_size,
         num_samples=args.num_samples,
         num_workers=int(data_cfg.get("num_workers", DEFAULT_NUM_WORKERS)),

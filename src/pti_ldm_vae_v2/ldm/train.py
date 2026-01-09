@@ -8,8 +8,10 @@ from typing import Any
 
 import torch
 from dotenv import load_dotenv
+from monai.networks.schedulers import DDIMScheduler
 from torch.amp import GradScaler, autocast
-from torch.optim import AdamW
+from torch.optim import Adam, AdamW
+from torch.optim.lr_scheduler import MultiStepLR
 from tqdm import tqdm
 
 from pti_ldm_vae_v2.vae.visualization import normalize_batch_for_display
@@ -20,7 +22,7 @@ from .conditioning import ConditionContextBuilder, MetricConditioning
 from .config import apply_train_overrides, load_config, resolve_run_dir, resolve_run_dirs
 from .data import create_ldm_dataloaders
 from .noise import create_initial_latent, read_noise_init_config
-from .scheduler import DiffusionSchedule
+from .scheduler import build_ddim_scheduler, build_ddpm_scheduler
 from .trainer import LDMTrainer, TrainerState
 from .wandb import init_wandb
 
@@ -61,7 +63,7 @@ def compute_scale_factor(
     amp_dtype = torch.float16 if device.type == "cuda" else None
     with torch.no_grad():
         with autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_dtype is not None):
-            latent = vae.encode_stage_2_inputs(images)
+            latent = vae.encode_deterministic(images)
     latent_std = torch.std(latent).item()
     if latent_std <= 0:
         return 1.0
@@ -76,7 +78,7 @@ def log_sanity_samples(
     regressor: Any,
     condition_builder: ConditionContextBuilder,
     metric_embed: MetricConditioning,
-    schedule: DiffusionSchedule,
+    ddim_scheduler: DDIMScheduler,
     concat_dentate: bool,
     use_dentate_latent: bool,
     init_mode: str,
@@ -103,7 +105,7 @@ def log_sanity_samples(
         regressor (Any): Frozen regression head callable.
         condition_builder (ConditionContextBuilder): Conditioning module for latents.
         metric_embed (MetricConditioning): Conditioning module for metrics.
-        schedule (DiffusionSchedule): Diffusion schedule.
+        ddim_scheduler (DDIMScheduler): DDIM scheduler configured for sampling.
         concat_dentate (bool): Whether to concatenate dentate latents to the UNet input.
         use_dentate_latent (bool): Whether to include dentate latents in cross-attention context.
         init_mode (str): ``pure_noise`` or ``dentate_noisy`` initialization.
@@ -156,16 +158,14 @@ def log_sanity_samples(
             noise_direction=noise_direction,
             noise_weight=noise_weight,
         )
-        timesteps = torch.linspace(
-            schedule.alphas.shape[0] - 1, 0, num_steps, device=device, dtype=torch.long
-        ).long()
+        timesteps = ddim_scheduler.timesteps
 
         saved_latents: dict[int, torch.Tensor] = {}
         for step_idx, t in enumerate(timesteps, start=1):
             latent_input = torch.cat([latent, z_cond], dim=1) if concat_dentate else latent
             timestep_batch = t.unsqueeze(0).repeat(latent.shape[0])
             eps = unet(latent_input, timesteps=timestep_batch, context=context)
-            latent = schedule.step(eps, int(t.item()), latent, eta=0.0)
+            latent, _ = ddim_scheduler.step(eps, int(t.item()), latent, eta=0.0)
             if step_idx in step_set:
                 saved_latents[step_idx] = latent.detach().clone()
 
@@ -266,18 +266,23 @@ def train() -> None:
     scale_factor = compute_scale_factor(vae, first_batch, device)
     print(f"[INFO] Latent scale_factor: {scale_factor:.6f}")
 
-    schedule = DiffusionSchedule.linear(
-        timesteps=diffusion_cfg.get("num_train_timesteps", 1000),
-        beta_start=diffusion_cfg.get("beta_start", 0.00085),
-        beta_end=diffusion_cfg.get("beta_end", 0.012),
-        device=device,
-    )
+    noise_scheduler = build_ddpm_scheduler(diffusion_cfg, device)
 
-    optimizer = AdamW(
+    optimizer_name = str(train_cfg.get("optimizer", "adam")).lower()
+    optimizer_cls = AdamW if optimizer_name == "adamw" else Adam
+    optimizer = optimizer_cls(
         list(unet.parameters()) + list(metric_embed.parameters()) + list(condition_builder.parameters()),
         lr=train_cfg["lr"],
         weight_decay=train_cfg.get("weight_decay", 0.0),
     )
+    lr_scheduler = None
+    milestones = train_cfg.get("lr_scheduler_milestones")
+    if milestones:
+        lr_scheduler = MultiStepLR(
+            optimizer,
+            milestones=[int(step) for step in milestones],
+            gamma=float(train_cfg.get("lr_scheduler_gamma", 0.1)),
+        )
     scaler = GradScaler(enabled=device.type == "cuda")
 
     trainer = LDMTrainer(
@@ -286,7 +291,7 @@ def train() -> None:
         regressor=regressor,
         condition_builder=condition_builder,
         metric_embed=metric_embed,
-        schedule=schedule,
+        noise_scheduler=noise_scheduler,
         optimizer=optimizer,
         scaler=scaler,
         device=device,
@@ -318,6 +323,8 @@ def train() -> None:
 
     for epoch in range(max_epochs):
         epoch_start = time.time()
+        if lr_scheduler is not None:
+            lr_scheduler.step()
         trainer.unet.train()
         trainer.metric_embed.train()
         trainer.condition_builder.train()
@@ -379,6 +386,7 @@ def train() -> None:
                     wandb_run.summary["best/val_loss_total"] = val_loss
 
             if sanity_enabled and wandb_run is not None and sanity_every > 0 and epoch % sanity_every == 0:
+                sanity_scheduler = build_ddim_scheduler(diffusion_cfg, sanity_steps, device)
                 with torch.no_grad():
                     for batch_idx, batch in enumerate(val_loader):
                         log_sanity_samples(
@@ -388,7 +396,7 @@ def train() -> None:
                             regressor=trainer.regressor,
                             condition_builder=trainer.condition_builder,
                             metric_embed=trainer.metric_embed,
-                            schedule=schedule,
+                            ddim_scheduler=sanity_scheduler,
                             concat_dentate=concat_dentate,
                             use_dentate_latent=use_dentate_latent,
                             init_mode=str(noise_init["init_mode"]),

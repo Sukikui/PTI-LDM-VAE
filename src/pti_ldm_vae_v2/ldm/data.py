@@ -6,7 +6,15 @@ from typing import Any
 
 import torch
 from monai.data import CacheDataset, DataLoader, Dataset, list_data_collate
-from monai.transforms import Compose, EnsureChannelFirstd, EnsureTyped, LoadImaged, Resized
+from monai.transforms import (
+    Compose,
+    EnsureChannelFirst,
+    EnsureChannelFirstd,
+    EnsureType,
+    EnsureTyped,
+    LoadImage,
+    LoadImaged,
+)
 
 from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, LocalNormalizeByMask, list_tif_paths
 
@@ -74,20 +82,16 @@ def _pair_paths(edente_paths: list[str], dente_paths: list[str]) -> list[dict[st
     return [{"edentulous": e, "dentate": d} for e, d in zip(edente_paths, dente_paths, strict=True)]
 
 
-def _build_pair_transform(patch_size: tuple[int, int]) -> Compose:
+def _build_pair_transform() -> Compose:
     """Build a MONAI transform pipeline for paired images.
 
-    Args:
-        patch_size (tuple[int, int]): Target spatial size (H, W).
-
     Returns:
-        Compose: Composed transform producing a tuple (edentulous, dentate).
+        Compose: Composed transform producing a tuple (edentulous, dentate) without resizing.
     """
     return Compose(
         [
             LoadImaged(keys=["edentulous", "dentate"]),
             EnsureChannelFirstd(keys=["edentulous", "dentate"]),
-            Resized(keys=["edentulous", "dentate"], spatial_size=patch_size),
             EnsureTyped(keys=["edentulous", "dentate"], dtype=torch.float32),
             ApplyLocalNormalizeDict(keys=["edentulous", "dentate"]),
             PairToTuple(),
@@ -145,7 +149,7 @@ def create_ldm_dataloaders(
     Args:
         data_base_dir (str): Root directory containing ``edente/`` and ``dente/`` subfolders.
         batch_size (int): Batch size.
-        patch_size (Iterable[int]): Spatial size (H, W) used for resizing.
+        patch_size (Iterable[int]): Unused (LDM input is not resized).
         train_split (float): Train/validation ratio when ``val_dir`` is not provided.
         num_workers (int): Number of dataloader workers.
         seed (int | None): Seed for shuffling; ``None`` disables shuffling.
@@ -177,7 +181,8 @@ def create_ldm_dataloaders(
         seed=seed,
     )
 
-    transform = _build_pair_transform(tuple(patch_size))
+    _ = patch_size
+    transform = _build_pair_transform()
     if cache_rate > 0:
         train_base = CacheDataset(data=train_pairs, transform=transform, cache_rate=cache_rate, num_workers=num_workers)
         val_base = CacheDataset(data=val_pairs, transform=transform, cache_rate=1.0, num_workers=num_workers)
@@ -222,3 +227,47 @@ def create_ldm_dataloaders(
     print("=" * 60 + "\n")
 
     return train_loader, val_loader, train_pairs, val_pairs
+
+
+def build_ldm_inference_transform() -> Compose:
+    """Build an inference transform pipeline for dentate images.
+
+    Returns:
+        Compose: Transform that loads, normalizes, and converts to float tensors.
+    """
+    return Compose(
+        [
+            LoadImage(image_only=True),
+            EnsureChannelFirst(),
+            LocalNormalizeByMask(),
+            EnsureType(dtype=torch.float32),
+        ]
+    )
+
+
+def create_ldm_inference_dataloader(
+    *,
+    input_dir: str,
+    batch_size: int,
+    num_samples: int | None = None,
+    num_workers: int = DEFAULT_NUM_WORKERS,
+) -> tuple[DataLoader, list[str]]:
+    """Create a dataloader for LDM sampling without resizing inputs.
+
+    Args:
+        input_dir (str): Directory containing dentate images.
+        batch_size (int): Batch size.
+        num_samples (int | None): Optional cap on number of images.
+        num_workers (int): Number of dataloader workers.
+
+    Returns:
+        tuple[DataLoader, list[str]]: Dataloader and list of image paths.
+    """
+    tif_paths = list_tif_paths(input_dir, data_source="dente")
+    if num_samples is not None:
+        tif_paths = tif_paths[:num_samples]
+
+    transform = build_ldm_inference_transform()
+    dataset = Dataset(data=tif_paths, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    return dataloader, tif_paths
