@@ -103,7 +103,7 @@ class LDMTrainer:
         condition_images = condition_images.to(self.device)
 
         with torch.no_grad():
-            z_target = self.vae.encode_deterministic(images)
+            z_target = self.vae.encode_stage_2_inputs(images)
             z_condition = self.vae.encode_deterministic(condition_images)
             metrics = self.regressor(condition_images)
 

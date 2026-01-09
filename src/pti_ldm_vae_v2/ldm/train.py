@@ -60,7 +60,7 @@ def compute_scale_factor(
     amp_dtype = torch.float16 if device.type == "cuda" else None
     with torch.no_grad():
         with autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_dtype is not None):
-            latent = vae.encode_deterministic(images)
+            latent = vae.encode_stage_2_inputs(images)
     latent_std = torch.std(latent).item()
     if latent_std <= 0:
         return 1.0

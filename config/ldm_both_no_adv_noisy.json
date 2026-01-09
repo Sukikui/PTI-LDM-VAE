@@ -1,5 +1,5 @@
 {
-  "run_dir": "./runs/ldm_both_no_adv_metrics_only_noisy",
+  "run_dir": "./runs/ldm_both_no_adv_noisy",
   "seed": 42,
   "data": {
     "data_base_dir": "./data/train_val",
@@ -32,7 +32,7 @@
     "norm_num_groups": 32
   },
   "conditioning": {
-    "use_dentate_latent": false,
+    "use_dentate_latent": true,
     "concat_dentate": false,
     "condition_dropout": 0.1,
     "metrics_dropout": 0.1,
@@ -69,7 +69,7 @@
     "enabled": true,
     "project": "pti-ldm-vae",
     "entity": null,
-    "name": "ldm_both_no_adv_metrics_only_noisy",
-    "tags": ["ldm", "metrics_only", "noisy_init", "unet_32-64-128-256", "latent4", "cond_metric6", "concat_false"]
+    "name": "ldm_both_no_adv_noisy",
+    "tags": ["ldm", "both_no_adv", "noisy_init", "unet_32-64-128-256", "latent4", "cond_metric6", "cond_dentate", "concat_false"]
   }
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-from monai.networks.schedulers import DDPMScheduler, DDIMScheduler
+from monai.networks.schedulers import DDIMScheduler, DDPMScheduler
 
 
 def build_ddpm_scheduler(diffusion_cfg: dict[str, Any], device: torch.device) -> DDPMScheduler:
@@ -22,7 +22,7 @@ def build_ddpm_scheduler(diffusion_cfg: dict[str, Any], device: torch.device) ->
         schedule=schedule,
         beta_start=float(diffusion_cfg.get("beta_start", 0.00085)),
         beta_end=float(diffusion_cfg.get("beta_end", 0.012)),
-        clip_sample=bool(diffusion_cfg.get("clip_sample", True)),
+        clip_sample=False,
     )
     return scheduler.to(device)
 
@@ -48,7 +48,7 @@ def build_ddim_scheduler(
         schedule=schedule,
         beta_start=float(diffusion_cfg.get("beta_start", 0.00085)),
         beta_end=float(diffusion_cfg.get("beta_end", 0.012)),
-        clip_sample=bool(diffusion_cfg.get("clip_sample", True)),
+        clip_sample=False,
     )
     scheduler = scheduler.to(device)
     scheduler.set_timesteps(int(num_steps), device=device)

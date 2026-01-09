@@ -33,12 +33,14 @@ python -m pti_ldm_vae_v2.ldm.sample \
 ## Key Arguments
 
 Training (`pti_ldm_vae_v2.ldm.train`):
+
 - `-c/--config-file`: LDM JSON config.
 - `--max-epochs`: Override epochs.
 - `--batch-size`: Override batch size.
 - `--lr`: Override learning rate.
 
 Sampling (`pti_ldm_vae_v2.ldm.sample`):
+
 - `-c/--config-file`: LDM JSON config.
 - `--checkpoint`: UNet checkpoint (best or last).
 - `--input-dir`: Dentate input folder.
@@ -52,26 +54,32 @@ Sampling (`pti_ldm_vae_v2.ldm.sample`):
 - `--num-samples`: Optional cap on processed images.
 
 Configuration (`conditioning` block):
+
 - `use_dentate_latent`: Enable/disable dentate latent conditioning (default true). When false, `concat_dentate` is forced to false.
 
 Configuration (`noise_init` block):
-- `init_mode`: ``pure_noise`` (default) or ``dentate_noisy`` to start from a noisy dentate latent.
+
+- `init_mode`: `pure_noise` (default) or `dentate_noisy` to start from a noisy dentate latent.
 - `noise_top`: Noise scale at the top of the latent (default 1.0).
 - `noise_bottom`: Noise scale at the bottom of the latent (default 0.0).
 - `noise_exponent`: Exponent shaping the vertical gradient (default 1.0).
-- `noise_direction`: ``vertical`` (top->bottom) or ``horizontal`` (left->right).
+- `noise_direction`: `vertical` (top->bottom) or `horizontal` (left->right).
 - `noise_weight`: Global multiplier applied to the noise (default 1.0).
 
 The same `noise_init` settings are used during training to build the noise input when `init_mode` is
-``dentate_noisy``, so train and inference stay aligned.
+`dentate_noisy`, so train and inference stay aligned.
 
 Configuration (`diffusion` + `train` blocks):
+
 - `diffusion.schedule`: Noise schedule string passed to MONAI schedulers (default `scaled_linear_beta`).
 - `train.optimizer`: `adam` (default) or `adamw`.
 - `train.lr_scheduler_milestones`: Optional list of epochs for `MultiStepLR`.
 - `train.lr_scheduler_gamma`: `MultiStepLR` decay factor.
 
 Training uses MONAI `DDPMScheduler` (forward noising). Sampling uses MONAI `DDIMScheduler`.
+Sample clipping is disabled to avoid saturating scaled latents.
+During training, target latents are encoded stochastically (`encode_stage_2_inputs`), while conditioning
+latents use deterministic encoding. The `scale_factor` is computed from the stochastic latents.
 
 Note: LDM inputs are **not resized**. All images in a batch must share the same spatial size.
 
@@ -80,13 +88,22 @@ Noisy latent visualization:
 ```bash
 python -m pti_ldm_vae_v2.ldm.visualize_noisy_latent \
   -c config/ldm_both_no_adv.json \
-  --input-path data/test/dente/example.tif
+  --input-path data/test/dente/example.tif \
+  --scale-factor 160
 ```
-This starts a Dash app with a channel selector. It uses only the VAE encoder plus the `noise_init` block.
+
+This starts a Dash app with a channel selector. It shows the input dentate image, the decoded noisy
+latent (what the LDM sees at sampling step 0), plus latent channels and the noise mask. The top row
+shows the selected clean latent channel, the noisy latent channel, and the noise mask. The bottom
+row shows the input dentate image and the VAE-decoded image from the noisy latent. Each panel has
+its own grayscale colorbar.
+To compare noise weight consistently, pass the same `--scale-factor` that training computed for the
+run (often around 160).
 
 ## Outputs
 
 Training artifacts:
+
 - Checkpoints: `runs/<run_name>/trained_weights/ldm_unet_best.pth`, `runs/<run_name>/trained_weights/ldm_unet_last.pth`
 - Splits: `runs/<run_name>/splits/ldm_pairs.json`
 
