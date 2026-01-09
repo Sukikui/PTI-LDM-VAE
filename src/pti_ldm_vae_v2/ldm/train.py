@@ -4,25 +4,22 @@ import argparse
 import json
 import time
 from copy import deepcopy
-from typing import Any
 
 import torch
 from dotenv import load_dotenv
-from monai.networks.schedulers import DDIMScheduler
 from torch.amp import GradScaler, autocast
 from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import MultiStepLR
 from tqdm import tqdm
 
-from pti_ldm_vae_v2.vae.visualization import normalize_batch_for_display
 from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, init_device_and_seed
 
 from .build import build_frozen_regressor, build_frozen_vae, build_unet
 from .conditioning import ConditionContextBuilder, MetricConditioning
 from .config import apply_train_overrides, load_config, resolve_run_dir, resolve_run_dirs
 from .data import create_ldm_dataloaders
-from .noise import create_initial_latent, read_noise_init_config
-from .scheduler import build_ddim_scheduler, build_ddpm_scheduler
+from .noise import read_noise_init_config
+from .scheduler import build_ddpm_scheduler
 from .trainer import LDMTrainer, TrainerState
 from .wandb import init_wandb
 
@@ -68,126 +65,6 @@ def compute_scale_factor(
     if latent_std <= 0:
         return 1.0
     return 1.0 / latent_std
-
-
-def log_sanity_samples(
-    wandb_run: Any,
-    *,
-    unet: torch.nn.Module,
-    vae: torch.nn.Module,
-    regressor: Any,
-    condition_builder: ConditionContextBuilder,
-    metric_embed: MetricConditioning,
-    ddim_scheduler: DDIMScheduler,
-    concat_dentate: bool,
-    use_dentate_latent: bool,
-    init_mode: str,
-    noise_top: float,
-    noise_bottom: float,
-    noise_exponent: float,
-    noise_direction: str,
-    noise_weight: float,
-    scale_factor: float,
-    batch: tuple[torch.Tensor, torch.Tensor],
-    batch_idx: int,
-    num_steps: int,
-    step_indices: list[int],
-    max_samples: int,
-    epoch: int,
-    log_step: int,
-) -> None:
-    """Log step-wise samples to W&B for visual sanity checks.
-
-    Args:
-        wandb_run (Any): Active W&B run or ``None``.
-        unet (torch.nn.Module): Diffusion UNet.
-        vae (torch.nn.Module): Frozen VAE for encoding/decoding.
-        regressor (Any): Frozen regression head callable.
-        condition_builder (ConditionContextBuilder): Conditioning module for latents.
-        metric_embed (MetricConditioning): Conditioning module for metrics.
-        ddim_scheduler (DDIMScheduler): DDIM scheduler configured for sampling.
-        concat_dentate (bool): Whether to concatenate dentate latents to the UNet input.
-        use_dentate_latent (bool): Whether to include dentate latents in cross-attention context.
-        init_mode (str): ``pure_noise`` or ``dentate_noisy`` initialization.
-        noise_top (float): Noise scale at the top of the image.
-        noise_bottom (float): Noise scale at the bottom of the image.
-        noise_exponent (float): Exponent to shape the vertical noise gradient.
-        noise_direction (str): ``vertical`` or ``horizontal`` gradient direction.
-        noise_weight (float): Global noise multiplier.
-        scale_factor (float): Latent scale factor (1 / std).
-        batch (tuple[torch.Tensor, torch.Tensor]): Batch of (edentulous, dentate) images.
-        batch_idx (int): Validation batch index.
-        num_steps (int): Number of diffusion steps for sampling.
-        step_indices (list[int]): 1-based sampling steps to visualize.
-        max_samples (int): Max number of samples to log per batch.
-        epoch (int): Current epoch index.
-        log_step (int): Global training step for W&B logging.
-    """
-    if wandb_run is None:
-        return
-
-    try:
-        import wandb  # type: ignore
-    except ImportError:
-        return
-
-    step_set = {int(step) for step in step_indices if 1 <= int(step) <= num_steps}
-    if not step_set:
-        return
-
-    edente, dentate = batch
-    device = next(unet.parameters()).device
-    edente = edente.to(device)
-    dentate = dentate.to(device)
-
-    with torch.no_grad():
-        z_cond = vae.encode_deterministic(dentate) * scale_factor
-        metrics = regressor(dentate)
-        metric_tokens = metric_embed(metrics)
-        if use_dentate_latent:
-            context = condition_builder(z_cond, metric_tokens)
-        else:
-            context = metric_tokens.unsqueeze(1)
-
-        latent = create_initial_latent(
-            z_cond,
-            init_mode=init_mode,
-            noise_top=noise_top,
-            noise_bottom=noise_bottom,
-            noise_exponent=noise_exponent,
-            noise_direction=noise_direction,
-            noise_weight=noise_weight,
-        )
-        timesteps = ddim_scheduler.timesteps
-
-        saved_latents: dict[int, torch.Tensor] = {}
-        for step_idx, t in enumerate(timesteps, start=1):
-            latent_input = torch.cat([latent, z_cond], dim=1) if concat_dentate else latent
-            timestep_batch = t.unsqueeze(0).repeat(latent.shape[0])
-            eps = unet(latent_input, timesteps=timestep_batch, context=context)
-            latent, _ = ddim_scheduler.step(eps, int(t.item()), latent, eta=0.0)
-            if step_idx in step_set:
-                saved_latents[step_idx] = latent.detach().clone()
-
-        disp_dentate = normalize_batch_for_display(dentate.detach().cpu())
-        disp_target = normalize_batch_for_display(edente.detach().cpu())
-
-        for step_idx in sorted(saved_latents):
-            decoded = vae.decode_stage_2_outputs(saved_latents[step_idx] / scale_factor)
-            disp_generated = normalize_batch_for_display(decoded.detach().cpu())
-            images = []
-            for idx in range(min(max_samples, disp_dentate.shape[0])):
-                triplet = torch.cat(
-                    [disp_dentate[idx], disp_target[idx], disp_generated[idx]],
-                    dim=2,
-                )[0].numpy()
-                images.append(wandb.Image(triplet, caption=f"step={step_idx} sample={idx:02d}"))
-
-            if images:
-                wandb_run.log(
-                    {f"val/sample_epoch{epoch:03d}/batch_{batch_idx:03d}": images, "epoch": epoch + 1},
-                    step=log_step,
-                )
 
 
 def train() -> None:
@@ -314,12 +191,6 @@ def train() -> None:
     state = TrainerState(epoch=0, global_step=0, best_val_loss=float("inf"))
     max_epochs = int(train_cfg["max_epochs"])
     val_interval = int(train_cfg.get("val_interval", 1))
-    sanity_cfg = dict(config.get("sanity_sampling", {}))
-    sanity_enabled = bool(sanity_cfg.get("enabled", True))
-    sanity_every = int(sanity_cfg.get("every", 20))
-    sanity_steps = int(sanity_cfg.get("num_steps", 50))
-    sanity_step_indices = sanity_cfg.get("step_indices", [1, 10, 20, 40, 50])
-    sanity_max_samples = int(sanity_cfg.get("max_samples", 1))
 
     for epoch in range(max_epochs):
         epoch_start = time.time()
@@ -384,36 +255,6 @@ def train() -> None:
                 trainer.save_checkpoint(state, weights_dir, best=True)
                 if wandb_run is not None:
                     wandb_run.summary["best/val_loss_total"] = val_loss
-
-            if sanity_enabled and wandb_run is not None and sanity_every > 0 and epoch % sanity_every == 0:
-                sanity_scheduler = build_ddim_scheduler(diffusion_cfg, sanity_steps, device)
-                with torch.no_grad():
-                    for batch_idx, batch in enumerate(val_loader):
-                        log_sanity_samples(
-                            wandb_run,
-                            unet=trainer.unet,
-                            vae=trainer.vae,
-                            regressor=trainer.regressor,
-                            condition_builder=trainer.condition_builder,
-                            metric_embed=trainer.metric_embed,
-                            ddim_scheduler=sanity_scheduler,
-                            concat_dentate=concat_dentate,
-                            use_dentate_latent=use_dentate_latent,
-                            init_mode=str(noise_init["init_mode"]),
-                            noise_top=float(noise_init["noise_top"]),
-                            noise_bottom=float(noise_init["noise_bottom"]),
-                            noise_exponent=float(noise_init["noise_exponent"]),
-                            noise_direction=str(noise_init["noise_direction"]),
-                            noise_weight=float(noise_init["noise_weight"]),
-                            scale_factor=scale_factor,
-                            batch=batch,
-                            batch_idx=batch_idx,
-                            num_steps=sanity_steps,
-                            step_indices=list(sanity_step_indices),
-                            max_samples=sanity_max_samples,
-                            epoch=epoch,
-                            log_step=state.global_step,
-                        )
 
         epoch_time = time.time() - epoch_start
         if wandb_run is not None:

@@ -19,6 +19,7 @@ python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv_metrics_only_noisy.
 
 This config mirrors the legacy UNet size (channels 32-64-128-256, cross-attn dim 512) and DDPM betas
 (0.0015 → 0.0195) while keeping the new conditioning behavior.
+Sanity sampling is disabled to keep training logs minimal.
 
 Sample (inference):
 
