@@ -5,7 +5,7 @@ For logging details, see [`docs/wandb.md`](wandb.md).
 
 ## Requirements
 
-- Python `3.13` (matches `pyproject.toml`).
+- Python `3.11` (matches `pyproject.toml`).
 - GPU optional. CPU works for quick tests, but training is slow.
 
 ## Option A: uv (recommended)
