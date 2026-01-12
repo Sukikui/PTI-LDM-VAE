@@ -28,7 +28,7 @@ dependencies = [
     "tifffile>=2025.10.4",
     "torchsummary>=1.5.1",
     "tqdm>=4.67.1",
-    "umap>=0.1.1",
+    "umap-learn>=0.5.5",
     "umap-learn>=0.5.9.post2",
     "wandb>=0.22.2",
 ]
