@@ -104,6 +104,9 @@ url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [build-system]
 requires = ["uv_build>=0.8,<0.9"]
 build-backend = "uv_build"
