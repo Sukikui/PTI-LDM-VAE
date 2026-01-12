@@ -1,5 +1,5 @@
 [project]
-name = "pti-ldm-vae"
+name = "pti-ldm-vae-v2"
 version = "0.1.0"
 description = "Medical Imaging Project for Edentulous Image Prediction using LDM and VAE"
 readme = "README.md"
