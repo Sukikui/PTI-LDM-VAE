@@ -8,12 +8,11 @@ import torch
 from dash import Dash, Input, Output, dcc, html
 from plotly.subplots import make_subplots
 
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
-
-from .build import build_frozen_vae
-from .config import load_config
-from .data import build_ldm_inference_transform
-from .noise import build_gradient_noise_mask, create_initial_latent, read_noise_init_config
+from pti_ldm_vae_v2.common import init_device_and_seed
+from pti_ldm_vae_v2.ldm.build import build_frozen_vae
+from pti_ldm_vae_v2.ldm.config import load_config
+from pti_ldm_vae_v2.ldm.data import build_ldm_inference_transform
+from pti_ldm_vae_v2.ldm.noise import build_gradient_noise_mask, create_initial_latent, read_noise_init_config
 
 
 def parse_args() -> argparse.Namespace:

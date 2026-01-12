@@ -19,7 +19,7 @@ from .config import (
 )
 from .data import create_regression_inference_dataloader
 from .normalization import NORM_STATS_FILENAME, load_target_normalizer
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed, resolve_run_output_dir
+from pti_ldm_vae_v2.common import init_device_and_seed, resolve_run_output_dir
 
 
 def parse_args() -> argparse.Namespace:

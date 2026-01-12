@@ -10,7 +10,7 @@ from monai.networks.schedulers import DDPMScheduler
 from torch.amp import GradScaler, autocast
 from torch.optim import Optimizer
 
-from .conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
+from pti_ldm_vae_v2.models.conditioning import CondEnc, ContextBuilder, apply_condition_dropout
 from .noise import create_initial_latent
 
 
@@ -32,8 +32,8 @@ class LDMTrainer:
         unet: torch.nn.Module,
         vae: torch.nn.Module,
         regressor: Callable[[torch.Tensor], torch.Tensor],
-        condition_builder: ConditionContextBuilder,
-        metric_embed: MetricConditioning,
+        condition_builder: ContextBuilder,
+        metric_embed: CondEnc,
         noise_scheduler: DDPMScheduler,
         optimizer: Optimizer,
         scaler: GradScaler,

@@ -32,7 +32,7 @@ from .normalization import (
     save_target_normalizer,
 )
 from .wandb import init_wandb, log_regression_epoch
-from pti_ldm_vae_v2.vae_regression_common import LatentRegressor, VAELatentRegressor, VAEModel
+from pti_ldm_vae_v2.common import LatentRegressor, VAELatentRegressor, VAEModel
 
 __all__ = [
     "NORM_STATS_FILENAME",

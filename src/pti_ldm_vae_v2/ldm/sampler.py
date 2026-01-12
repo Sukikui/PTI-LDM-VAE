@@ -5,7 +5,7 @@ from collections.abc import Callable
 import torch
 from monai.networks.schedulers import DDIMScheduler
 
-from .conditioning import ConditionContextBuilder, MetricConditioning, apply_condition_dropout
+from pti_ldm_vae_v2.models.conditioning import CondEnc, ContextBuilder, apply_condition_dropout
 from .noise import create_initial_latent
 
 
@@ -15,8 +15,8 @@ class LatentDiffusionSampler:
     Args:
         unet (torch.nn.Module): Trained diffusion UNet.
         vae (torch.nn.Module): Frozen VAE model.
-        condition_builder (ConditionContextBuilder): Projects dentate latents to attention tokens.
-        metric_embed (MetricConditioning): Embeds metric vectors to tokens.
+        condition_builder (ContextBuilder): Projects dentate latents to attention tokens.
+        metric_embed (CondEnc): Embeds metric vectors to tokens.
         ddim_scheduler (DDIMScheduler): DDIM scheduler configured for sampling.
         concat_dentate (bool): Whether to concatenate dentate latents to UNet input channels.
         use_dentate_latent (bool): Whether to include dentate latents in cross-attention context.
@@ -27,8 +27,8 @@ class LatentDiffusionSampler:
         self,
         unet: torch.nn.Module,
         vae: torch.nn.Module,
-        condition_builder: ConditionContextBuilder,
-        metric_embed: MetricConditioning,
+        condition_builder: ContextBuilder,
+        metric_embed: CondEnc,
         ddim_scheduler: DDIMScheduler,
         *,
         concat_dentate: bool,

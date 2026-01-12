@@ -13,9 +13,9 @@ from pti_ldm_vae_v2.analysis.latent_analysis import limit_threadpools
 from pti_ldm_vae_v2.analysis.latent_analysis import list_image_paths
 from pti_ldm_vae_v2.analysis.latent_analysis import save_color_legend
 from pti_ldm_vae_v2.vae.config import load_config_and_model
-from pti_ldm_vae_v2.vae_regression_common import build_preprocess_transform
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
-from pti_ldm_vae_v2.vae_regression_common import resolve_run_output_dir
+from pti_ldm_vae_v2.common import build_preprocess_transform
+from pti_ldm_vae_v2.common import init_device_and_seed
+from pti_ldm_vae_v2.common import resolve_run_output_dir
 
 DEFAULT_DPI = 300
 DEFAULT_METHOD = "umap"

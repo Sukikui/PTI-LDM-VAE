@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import warnings
 from collections.abc import Iterable, Sequence
 
 import torch
-from torch import nn
+import torch.nn as nn
 
-from pti_ldm_vae.models.autoencoder import VAEModel
+from .vae import VAEModel
 
 
 def _activation_from_name(name: str) -> nn.Module:
@@ -59,7 +61,7 @@ class LatentRegressor(nn.Module):
 
         for idx in range(len(dims) - 2):
             layers.append(nn.Linear(dims[idx], dims[idx + 1]))
-            layers.append(act.__class__())  # new instance to avoid shared state
+            layers.append(act.__class__())
             if dropout > 0:
                 layers.append(nn.Dropout(p=dropout))
 
@@ -139,7 +141,14 @@ class VAELatentRegressor(nn.Module):
 
     @staticmethod
     def compute_flat_dim(latent: torch.Tensor) -> int:
-        """Compute flattened latent size from a latent tensor."""
+        """Compute flattened latent size from a latent tensor.
+
+        Args:
+            latent (torch.Tensor): Latent tensor.
+
+        Returns:
+            int: Flattened latent dimension.
+        """
         return int(torch.flatten(latent, start_dim=1).shape[1])
 
     @staticmethod

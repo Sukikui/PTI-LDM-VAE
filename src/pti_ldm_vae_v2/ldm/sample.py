@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -10,10 +11,15 @@ from PIL import Image
 from tqdm import tqdm
 
 from pti_ldm_vae_v2.vae.visualization import normalize_batch_for_display
-from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, init_device_and_seed, resolve_run_output_dir
+from pti_ldm_vae_v2.common import DEFAULT_NUM_WORKERS, init_device_and_seed, resolve_run_output_dir
+from pti_ldm_vae_v2.tools.mask_metrics_utils import (
+    binary_mask_from_prediction,
+    compute_bbox,
+    compute_edente_widths,
+)
 
 from .build import build_frozen_regressor, build_frozen_vae, build_unet
-from .conditioning import ConditionContextBuilder, MetricConditioning
+from pti_ldm_vae_v2.models.conditioning import CondEnc, ContextBuilder
 from .config import load_config, resolve_run_dir
 from .data import create_ldm_inference_dataloader
 from .noise import read_noise_init_config
@@ -173,6 +179,62 @@ def save_results(
         Image.fromarray(png_uint8).save(out_png / f"{stem}.png")
 
 
+def _infer_width_samples(targets: list[str]) -> int:
+    """Infer the number of width samples from regression target names.
+
+    Args:
+        targets (list[str]): Regression target names.
+
+    Returns:
+        int: Number of ``width_*`` targets.
+    """
+    return sum(1 for target in targets if target.startswith("width_"))
+
+
+def _compute_pred_metrics(
+    prediction: torch.Tensor,
+    *,
+    width_samples: int,
+) -> tuple[dict[str, int], bool]:
+    """Compute edente metrics from a predicted image.
+
+    Args:
+        prediction (torch.Tensor): Predicted edentulous image [C, H, W].
+        width_samples (int): Number of width samples to compute.
+
+    Returns:
+        tuple[dict[str, int], bool]: Metrics dict and whether the mask was empty.
+    """
+    image = prediction.detach().cpu().numpy()
+    mask = binary_mask_from_prediction(image)
+    if mask.sum() == 0:
+        metrics = {"height_0": 0}
+        for idx in range(width_samples):
+            metrics[f"width_{idx}"] = 0
+        return metrics, True
+
+    try:
+        x_min, y_min, bbox_w, bbox_h = compute_bbox(mask)
+    except ValueError:
+        metrics = {"height_0": 0}
+        for idx in range(width_samples):
+            metrics[f"width_{idx}"] = 0
+        return metrics, True
+
+    bbox_height_px, widths = compute_edente_widths(
+        mask,
+        x=x_min,
+        y=y_min,
+        width=bbox_w,
+        height=bbox_h,
+        samples=width_samples,
+    )
+    metrics = {"height_0": int(bbox_height_px)}
+    for idx, value in enumerate(widths):
+        metrics[f"width_{idx}"] = int(value)
+    return metrics, False
+
+
 def main() -> None:
     """Entry point for LDM sampling."""
     args = parse_args()
@@ -197,6 +259,7 @@ def main() -> None:
         patch_size=tuple(data_cfg["patch_size"]),
         targets=config["regressor"]["targets"],
     )
+    width_samples = _infer_width_samples(config["regressor"]["targets"])
 
     use_dentate_latent = bool(conditioning_cfg.get("use_dentate_latent", True))
     concat_dentate = bool(conditioning_cfg.get("concat_dentate", True))
@@ -209,12 +272,12 @@ def main() -> None:
     unet = build_unet(unet_cfg).to(device)
 
     cross_attention_dim = unet_cfg.get("cross_attention_dim", 256)
-    metric_embed = MetricConditioning(
+    metric_embed = CondEnc(
         input_dim=len(config["regressor"]["targets"]),
         embed_dim=cross_attention_dim,
         dropout=conditioning_cfg.get("metric_dropout", 0.0),
     ).to(device)
-    condition_builder = ConditionContextBuilder(latent_channels, cross_attention_dim).to(device)
+    condition_builder = ContextBuilder(latent_channels, cross_attention_dim).to(device)
     scale_factor = load_ldm_checkpoint(unet, metric_embed, condition_builder, args.checkpoint)
     unet.eval()
 
@@ -246,6 +309,11 @@ def main() -> None:
     out_png = output_dir / "results_png"
     out_tif.mkdir(parents=True, exist_ok=True)
     out_png.mkdir(parents=True, exist_ok=True)
+    metrics_dir = resolve_run_output_dir(run_dir, args.input_dir, None, "metrics")
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = metrics_dir / "attributes_edente_pred.json"
+    pred_metrics: dict[str, dict[str, int]] = {}
+    empty_masks = 0
 
     idx = 0
     for batch in tqdm(dataloader, desc="Sampling", unit="batch"):
@@ -269,7 +337,18 @@ def main() -> None:
             noise_weight=float(noise_init["noise_weight"]),
         )
         save_results(generated, batch, edente_batch, batch_paths, out_tif, out_png)
+        for i, src_path in enumerate(batch_paths):
+            metrics, is_empty = _compute_pred_metrics(generated[i], width_samples=width_samples)
+            pred_metrics[Path(src_path).name] = metrics
+            if is_empty:
+                empty_masks += 1
         idx += batch_size
+
+    with metrics_path.open("w", encoding="utf-8") as file:
+        json.dump(pred_metrics, file, indent=4)
+
+    if empty_masks > 0:
+        print(f"[WARN] {empty_masks} predictions produced empty masks for metrics.")
 
     print(f"[INFO] Generated {idx} samples. Outputs: {output_dir}")
 

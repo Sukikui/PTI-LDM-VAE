@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 
-class MetricConditioning(nn.Module):
+class CondEnc(nn.Module):
     """Embed metric vectors for diffusion conditioning.
 
     Args:
@@ -37,7 +37,7 @@ class MetricConditioning(nn.Module):
         return self.mlp(metrics)
 
 
-class ConditionContextBuilder(nn.Module):
+class ContextBuilder(nn.Module):
     """Project spatial latents and metric embeddings to cross-attention context.
 
     Args:

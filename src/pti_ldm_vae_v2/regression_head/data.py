@@ -6,7 +6,7 @@ from typing import Any
 import torch
 from monai.data import CacheDataset, DataLoader, Dataset, list_data_collate
 
-from pti_ldm_vae_v2.vae_regression_common import (
+from pti_ldm_vae_v2.common import (
     DEFAULT_NUM_WORKERS,
     build_preprocess_transform,
     filter_attributes_for_paths,

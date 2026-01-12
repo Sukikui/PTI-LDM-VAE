@@ -27,7 +27,7 @@ from .data import create_regression_dataloaders
 from .engine import train_one_epoch, validate_one_epoch
 from .losses import build_loss_fn, regression_loss_key
 from .normalization import NORM_STATS_FILENAME, TargetNormalizer, compute_target_normalizer, save_target_normalizer
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
+from pti_ldm_vae_v2.common import init_device_and_seed
 from .wandb import init_wandb, log_regression_epoch
 
 load_dotenv()

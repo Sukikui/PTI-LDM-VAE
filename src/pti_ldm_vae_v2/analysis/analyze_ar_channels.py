@@ -1,24 +1,27 @@
+from __future__ import annotations
+
 import argparse
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import plotly.graph_objects as go
+import tifffile
 import torch
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
-from monai.transforms import Compose, EnsureChannelFirst, EnsureType, Resize
+from monai.transforms import Compose
 
-from pti_ldm_vae.analysis.common import TifReader
-from pti_ldm_vae.data.transforms import LocalNormalizeByMask
-from pti_ldm_vae.utils.vae_loader import load_vae_config, load_vae_model
+from pti_ldm_vae_v2.vae.config import load_config_and_model
+from pti_ldm_vae_v2.common import build_preprocess_transform
+from pti_ldm_vae_v2.common import init_device_and_seed
 
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the AR channel viewer.
 
     Returns:
-        Parsed arguments namespace.
+        argparse.Namespace: Parsed arguments.
     """
     parser = argparse.ArgumentParser(description="Interactive viewer for AR-VAE latent channels (single image).")
     parser.add_argument("-c", "--config-file", required=True, help="Path to AR-VAE config JSON.")
@@ -30,34 +33,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_transform(patch_size: tuple[int, int]) -> Compose:
-    """Create preprocessing transform matching VAE training pipeline.
-
-    Args:
-        patch_size: Spatial size (H, W) used to resize the input.
-
-    Returns:
-        Composed MONAI transform.
-    """
-    return Compose(
-        [
-            TifReader(),
-            EnsureChannelFirst(channel_dim="no_channel"),
-            Resize(patch_size),
-            LocalNormalizeByMask(),
-            EnsureType(dtype=torch.float32),
-        ]
-    )
-
-
 def load_attribute_mapping(config: Any) -> dict[str, int]:
     """Extract attribute-to-channel mapping from config.
 
     Args:
-        config: Parsed configuration namespace.
+        config (Any): Parsed configuration namespace.
 
     Returns:
-        Mapping from attribute name to latent channel index.
+        dict[str, int]: Mapping from attribute name to latent channel index.
 
     Raises:
         ValueError: If regularized_attributes or attribute_latent_mapping is missing.
@@ -73,18 +56,21 @@ def load_attribute_mapping(config: Any) -> dict[str, int]:
 
 
 def encode_image(
-    image_path: str, autoencoder: torch.nn.Module, transform: Compose, device: torch.device
+    image_path: str,
+    autoencoder: torch.nn.Module,
+    transform: Compose,
+    device: torch.device,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Encode a single image and return reconstructed output and latent means (deterministic).
+    """Encode a single image and return reconstruction and latent means.
 
     Args:
-        image_path: Path to input image.
-        autoencoder: Loaded VAE model.
-        transform: Preprocessing transform.
-        device: Torch device.
+        image_path (str): Path to input image.
+        autoencoder (torch.nn.Module): Loaded VAE model.
+        transform (Compose): Preprocessing transform.
+        device (torch.device): Torch device.
 
     Returns:
-        Tuple of (reconstruction array, latent means array with shape [C, H, W]).
+        tuple[np.ndarray, np.ndarray]: (reconstruction, latents) arrays.
     """
     image = transform(image_path)
     batch = image.unsqueeze(0).to(device)
@@ -105,7 +91,14 @@ def encode_image(
 
 
 def _normalize_to_unit(data: np.ndarray) -> np.ndarray:
-    """Normalize array to [0,1] for visualization."""
+    """Normalize array to [0,1] for visualization.
+
+    Args:
+        data (np.ndarray): Input array.
+
+    Returns:
+        np.ndarray: Normalized array.
+    """
     if data.size == 0:
         return data
     data_min, data_max = float(data.min()), float(data.max())
@@ -117,19 +110,34 @@ def _normalize_to_unit(data: np.ndarray) -> np.ndarray:
 def _make_heatmap(
     data: np.ndarray,
     title: str,
+    *,
     colorscale: str = "Viridis",
     showscale: bool = True,
     width: int = 340,
     height: int = 340,
     show_colorbar: bool | None = None,
 ) -> go.Figure:
-    """Create a Plotly heatmap figure for a single-channel image with fixed sizing."""
+    """Create a Plotly heatmap figure for a single-channel image.
+
+    Args:
+        data (np.ndarray): Input array.
+        title (str): Figure title.
+        colorscale (str): Plotly colorscale name.
+        showscale (bool): Whether to show colorbar.
+        width (int): Figure width in pixels.
+        height (int): Figure height in pixels.
+        show_colorbar (bool | None): Override for showing colorbar.
+
+    Returns:
+        go.Figure: Heatmap figure.
+    """
+    show_bar = showscale if show_colorbar is None else show_colorbar
     fig = go.Figure(
         data=go.Heatmap(
             z=np.squeeze(data),
             colorscale=colorscale,
-            showscale=showscale if show_colorbar is None else show_colorbar,
-            colorbar={"title": title, "len": 0.8} if (showscale if show_colorbar is None else show_colorbar) else None,
+            showscale=show_bar,
+            colorbar={"title": title, "len": 0.8} if show_bar else None,
         )
     )
     fig.update_layout(
@@ -150,10 +158,20 @@ def build_app(
     attr_to_channel: dict[str, int],
     image_name: str,
 ) -> Dash:
-    """Create the Dash application."""
+    """Create the Dash application.
+
+    Args:
+        original (np.ndarray): Raw input image.
+        reconstruction (np.ndarray): Reconstruction output.
+        latents (np.ndarray): Latent channels array.
+        attr_to_channel (dict[str, int]): Attribute -> channel mapping.
+        image_name (str): Display name for the image.
+
+    Returns:
+        Dash: Configured Dash app.
+    """
     app = Dash(__name__)
 
-    # Build dropdown options for all channels (regularized and unmapped)
     attr_by_idx = {idx: name for name, idx in attr_to_channel.items() if idx < latents.shape[0]}
     channel_options = []
     for idx in range(latents.shape[0]):
@@ -169,9 +187,9 @@ def build_app(
         [
             html.Div(
                 [
-                    html.H2(f"AR-VAE Channels · {image_name}", style={"marginBottom": "6px"}),
+                    html.H2(f"AR-VAE channels - {image_name}", style={"marginBottom": "6px"}),
                     html.P(
-                        "Compare input vs reconstruction and browse every latent channel. Regularized attributes are highlighted.",
+                        "Compare input vs reconstruction and browse latent channels. Regularized attributes are labeled.",
                         style={"color": "#475467", "fontSize": "14px", "marginTop": "0px"},
                     ),
                 ],
@@ -275,8 +293,21 @@ def build_app(
         State("latent-store", "data"),
         State("attr-map", "data"),
     )
-    def update_channel_fig(selected_channel: int | None, latent_data: list[list[list[float]]], mapping: dict[str, int]):
-        """Update channel heatmap when dropdown changes."""
+    def update_channel_fig(
+        selected_channel: int | None,
+        latent_data: list[list[list[float]]],
+        mapping: dict[str, int],
+    ) -> go.Figure:
+        """Update channel heatmap when dropdown changes.
+
+        Args:
+            selected_channel (int | None): Selected channel index.
+            latent_data (list[list[list[float]]]): Stored latent values.
+            mapping (dict[str, int]): Attribute -> channel mapping.
+
+        Returns:
+            go.Figure: Updated heatmap figure.
+        """
         if selected_channel is None:
             return _make_heatmap(np.zeros_like(latents[0]), "No channel")
         latent_array = np.array(latent_data)
@@ -291,9 +322,13 @@ def build_app(
         else:
             title = f"ch {selected_channel}: unmapped"
 
-        # Hide colorbar to keep plot width stable; title carries info
         return _make_heatmap(
-            _normalize_to_unit(channel_map), title, showscale=False, show_colorbar=False, width=420, height=360
+            _normalize_to_unit(channel_map),
+            title,
+            showscale=False,
+            show_colorbar=False,
+            width=420,
+            height=360,
         )
 
     return app
@@ -302,18 +337,14 @@ def build_app(
 def main() -> None:
     """Entry point."""
     args = parse_args()
-    config = load_vae_config(args.config_file)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[INFO] Using device: {device}")
+    device = init_device_and_seed(None, print_monai_config=False)
+    config, autoencoder = load_config_and_model(args.config_file, args.checkpoint, device)
 
     attr_to_channel = load_attribute_mapping(config)
     patch_size = tuple(config.autoencoder_train["patch_size"])
-    transform = build_transform(patch_size)
+    transform = build_preprocess_transform(patch_size)
 
-    autoencoder = load_vae_model(config, args.checkpoint, device)
-    autoencoder.eval()
-
-    original = TifReader()(args.image_path)
+    original = tifffile.imread(args.image_path).astype(np.float32)
     reconstruction, latents = encode_image(args.image_path, autoencoder, transform, device)
 
     app = build_app(original, reconstruction, latents, attr_to_channel, Path(args.image_path).name)

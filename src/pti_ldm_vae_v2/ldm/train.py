@@ -12,10 +12,10 @@ from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import MultiStepLR
 from tqdm import tqdm
 
-from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, init_device_and_seed
+from pti_ldm_vae_v2.common import DEFAULT_NUM_WORKERS, init_device_and_seed
 
 from .build import build_frozen_regressor, build_frozen_vae, build_unet
-from .conditioning import ConditionContextBuilder, MetricConditioning
+from pti_ldm_vae_v2.models.conditioning import CondEnc, ContextBuilder
 from .config import apply_train_overrides, load_config, resolve_run_dir, resolve_run_dirs
 from .data import create_ldm_dataloaders
 from .noise import read_noise_init_config
@@ -129,12 +129,12 @@ def train() -> None:
     ema_unet = deepcopy(unet).to(device) if train_cfg.get("ema_decay") else None
 
     cross_attention_dim = unet_config.get("cross_attention_dim", 256)
-    metric_embed = MetricConditioning(
+    metric_embed = CondEnc(
         input_dim=len(config["regressor"]["targets"]),
         embed_dim=cross_attention_dim,
         dropout=conditioning_cfg.get("metric_dropout", 0.0),
     ).to(device)
-    condition_builder = ConditionContextBuilder(
+    condition_builder = ContextBuilder(
         latent_channels=latent_channels,
         cross_attention_dim=cross_attention_dim,
     ).to(device)

@@ -1,8 +1,8 @@
 # VAE Module
 
 VAE training, inference, and evaluation logic.
-Shared helpers live in `pti_ldm_vae_v2/vae_regression_common` and are the only cross-module dependency
-(along with third-party libs).
+Shared helpers live in `pti_ldm_vae_v2/common`, and shared model definitions live in
+`pti_ldm_vae_v2/models` (along with third-party libs).
 
 ## Entry Points
 
@@ -34,6 +34,15 @@ python -m pti_ldm_vae_v2.analysis.analyze_static \
   --folder-edente data/test/edente \
   --folder-dente data/test/dente \
   --method umap
+```
+
+AR channel viewer (single image, Dash):
+
+```bash
+python -m pti_ldm_vae_v2.analysis.analyze_ar_channels \
+  -c config/vae_both_no_adv.json \
+  --checkpoint runs/vae_both_no_adv/trained_weights/autoencoder_last.pt \
+  --image-path data/test/edente/example.tif
 ```
 
 ## CLI Arguments
@@ -91,6 +100,15 @@ python -m pti_ldm_vae_v2.analysis.analyze_static \
 - `--dpi` (default: 300)
 - `--subtitle` (optional)
 
+### AR Channel Viewer
+
+- `-c, --config-file` (required)
+- `--checkpoint` (required)
+- `--image-path` (required)
+- `--host` (default: 127.0.0.1)
+- `--port` (default: 8052)
+- `--debug` (optional)
+
 ## Outputs
 
 ### Training
@@ -141,9 +159,9 @@ pti-ldm-vae/
    └─ *.json                       # configs; each one sets run_dir
 ```
 
-Shared helpers: `src/pti_ldm_vae_v2/vae_regression_common/`.
-VAEModel lives in `src/pti_ldm_vae_v2/vae_regression_common/vae_model.py`.
-Preprocess transform lives in `src/pti_ldm_vae_v2/vae_regression_common/transforms.py` (`build_preprocess_transform`).
+Shared helpers: `src/pti_ldm_vae_v2/common/`.
+VAEModel lives in `src/pti_ldm_vae_v2/models/vae.py`.
+Preprocess transform lives in `src/pti_ldm_vae_v2/common/transforms.py` (`build_preprocess_transform`).
 
 Run layout (created under `run_dir` from the config):
 
@@ -217,4 +235,4 @@ Notes:
 
 ## Defaults
 
-- `DEFAULT_NUM_WORKERS = 4` in `pti_ldm_vae_v2/vae_regression_common/runtime.py` (internal only, not a CLI arg).
+- `DEFAULT_NUM_WORKERS = 4` in `pti_ldm_vae_v2/common/runtime.py` (internal only, not a CLI arg).

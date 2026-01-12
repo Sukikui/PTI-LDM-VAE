@@ -1,8 +1,8 @@
 # Regression Head Module
 
 Training, inference, and evaluation logic for the regression head.
-Shared helpers live in `pti_ldm_vae_v2/vae_regression_common` and are the only cross-module dependency
-(along with third-party libs).
+Shared helpers live in `pti_ldm_vae_v2/common`, and shared model definitions live in
+`pti_ldm_vae_v2/models` (along with third-party libs).
 
 ## Entry Points
 
@@ -92,11 +92,11 @@ pti-ldm-vae/
     `-- *.json                          # configs; each one sets run_dir
 ```
 
-Shared helpers: `src/pti_ldm_vae_v2/vae_regression_common/`.
+Shared helpers: `src/pti_ldm_vae_v2/common/`.
 Models live in:
-- `src/pti_ldm_vae_v2/vae_regression_common/vae_model.py` (VAEModel)
-- `src/pti_ldm_vae_v2/vae_regression_common/regression_head_models.py` (LatentRegressor, VAELatentRegressor)
-Preprocess transform lives in `src/pti_ldm_vae_v2/vae_regression_common/transforms.py` (`build_preprocess_transform`).
+- `src/pti_ldm_vae_v2/models/vae.py` (VAEModel)
+- `src/pti_ldm_vae_v2/models/regression_head.py` (LatentRegressor, VAELatentRegressor)
+Preprocess transform lives in `src/pti_ldm_vae_v2/common/transforms.py` (`build_preprocess_transform`).
 
 Run layout (created under `run_dir` from the config):
 

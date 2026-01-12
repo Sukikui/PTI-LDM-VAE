@@ -7,8 +7,8 @@ from typing import Any
 import torch
 from monai.bundle import ConfigParser
 
-from pti_ldm_vae_v2.vae_regression_common import VAEModel
-from pti_ldm_vae_v2.vae_regression_common import resolve_run_subdir
+from pti_ldm_vae_v2.common import VAEModel
+from pti_ldm_vae_v2.common import resolve_run_subdir
 
 
 def load_config(config_file: str) -> SimpleNamespace:

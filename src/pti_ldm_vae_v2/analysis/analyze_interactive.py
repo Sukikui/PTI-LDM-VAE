@@ -20,8 +20,8 @@ from pti_ldm_vae_v2.analysis.latent_analysis import limit_threadpools
 from pti_ldm_vae_v2.analysis.latent_analysis import latent_distance
 from pti_ldm_vae_v2.analysis.latent_analysis import latent_distance_cross
 from pti_ldm_vae_v2.analysis.latent_analysis import list_image_paths
-from pti_ldm_vae_v2.vae_regression_common import build_preprocess_transform
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
+from pti_ldm_vae_v2.common import build_preprocess_transform
+from pti_ldm_vae_v2.common import init_device_and_seed
 
 DEFAULT_BATCH_SIZE = 8
 DEFAULT_METHOD = "tsne"

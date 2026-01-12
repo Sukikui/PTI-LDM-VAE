@@ -31,7 +31,3 @@ How to enable/disable logging, set env vars, and run in offline mode.
 ### 8. [`docs/reproducibility.md`](reproducibility.md)
 
 Seeds, version pinning, and practical determinism tips.
-
-### 9. [`docs/troubleshooting.md`](troubleshooting.md)
-
-Common failures (CUDA, W&B login, disk quota, analysis crashes) and fixes.

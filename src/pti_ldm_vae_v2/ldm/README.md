@@ -86,7 +86,7 @@ Note: LDM inputs are **not resized**. All images in a batch must share the same 
 Noisy latent visualization:
 
 ```bash
-python -m pti_ldm_vae_v2.ldm.visualize_noisy_latent \
+python -m pti_ldm_vae_v2.analysis.visualize_noisy_latent \
   -c config/ldm_both_no_adv.json \
   --input-path data/test/dente/example.tif \
   --scale-factor 160
@@ -113,7 +113,14 @@ Sampling outputs (default):
 runs/<run_name>/results/<input_dir_relative>/
   results_tif/
   results_png/
+
+runs/<run_name>/metrics/<input_dir_relative>/
+  attributes_edente_pred.json
 ```
 
 Each output uses the original dentate filename and contains triplets ordered as:
 `dente (gt) | edente (gt) | edente (pred)`.
+
+`attributes_edente_pred.json` matches the schema from `tools/compute_mask_metrics.py`, computed from the
+predicted edentulous images. Predictions are binarized with an absolute threshold of 0.2 and cleaned
+by keeping the largest connected component.

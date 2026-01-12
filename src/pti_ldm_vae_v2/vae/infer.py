@@ -13,8 +13,8 @@ from tqdm import tqdm
 
 from .config import load_config_and_model
 from .data import create_inference_dataloader
-from pti_ldm_vae_v2.vae_regression_common import VAEModel
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed, resolve_run_output_dir
+from pti_ldm_vae_v2.common import VAEModel
+from pti_ldm_vae_v2.common import init_device_and_seed, resolve_run_output_dir
 from .visualization import normalize_batch_for_display
 
 

@@ -44,12 +44,6 @@ wheels/
 *.ptEn
 *.json
 
-# VAE latents cache
-cache/
-
-# Results
-results/
-
 # Personal files and directories
 TODO.md
 TUTO_CBP_UNIX.md
@@ -61,3 +55,6 @@ wandb/
 # Legacy files
 old_sources/
 legacy_config/
+src/old_pti_ldm_vae/
+evals/
+results/

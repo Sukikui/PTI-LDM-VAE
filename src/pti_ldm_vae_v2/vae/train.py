@@ -24,8 +24,8 @@ from .losses import (
     ensure_three_channels,
     select_intensity_loss,
 )
-from pti_ldm_vae_v2.vae_regression_common import VAEModel
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
+from pti_ldm_vae_v2.common import VAEModel
+from pti_ldm_vae_v2.common import init_device_and_seed
 from .visualization import normalize_batch_for_display
 from .wandb import init_wandb
 

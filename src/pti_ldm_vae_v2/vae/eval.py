@@ -15,8 +15,8 @@ from typing import Any
 from .config import default_eval_output_dir, load_config_and_model
 from .data import create_inference_dataloader
 from .losses import compute_kl_loss, ensure_three_channels, select_intensity_loss
-from pti_ldm_vae_v2.vae_regression_common import VAEModel
-from pti_ldm_vae_v2.vae_regression_common import init_device_and_seed
+from pti_ldm_vae_v2.common import VAEModel
+from pti_ldm_vae_v2.common import init_device_and_seed
 
 
 def parse_args() -> argparse.Namespace:

@@ -16,7 +16,7 @@ from monai.transforms import (
     LoadImaged,
 )
 
-from pti_ldm_vae_v2.vae_regression_common import DEFAULT_NUM_WORKERS, LocalNormalizeByMask, list_tif_paths
+from pti_ldm_vae_v2.common import DEFAULT_NUM_WORKERS, LocalNormalizeByMask, list_tif_paths
 
 
 class ApplyLocalNormalizeDict:

@@ -8,7 +8,7 @@ from typing import Any
 import torch
 from monai.bundle import ConfigParser
 
-from pti_ldm_vae_v2.vae_regression_common import (
+from pti_ldm_vae_v2.common import (
     DEFAULT_NUM_WORKERS,
     LatentRegressor,
     VAELatentRegressor,

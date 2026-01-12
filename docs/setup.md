@@ -1,6 +1,7 @@
 # Setup
 
 This guide covers environment setup and W&B login.
+For logging details, see [`docs/wandb.md`](wandb.md).
 
 ## Requirements
 
@@ -48,7 +49,7 @@ Notes:
 - The conda file installs the default PyPI Torch build.
 - For CUDA, reinstall Torch/TorchVision from the correct CUDA wheel after the env is created.
 
-## W&B (optional)
+## W&B
 
 This project loads environment variables from a `.env` file at the repo root.
 

@@ -9,9 +9,9 @@ from pti_ldm_vae_v2.regression_head.checkpoint import load_regression_checkpoint
 from pti_ldm_vae_v2.regression_head.config import build_regression_model_from_config, load_config as load_reg_config
 from pti_ldm_vae_v2.vae.config import load_config as load_vae_config
 from pti_ldm_vae_v2.vae.config import load_model as load_vae_model
-from pti_ldm_vae_v2.vae_regression_common import VAELatentRegressor, VAEModel
+from pti_ldm_vae_v2.common import VAELatentRegressor, VAEModel
 
-from .unet import DiffusionUNet
+from pti_ldm_vae_v2.models import DiffusionUNet
 
 
 def build_frozen_vae(config_file: str, checkpoint: str, device: torch.device) -> tuple[VAEModel, int]:
