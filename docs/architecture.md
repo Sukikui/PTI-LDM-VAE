@@ -32,7 +32,8 @@ These metrics act as geometric constraints used to condition the diffusion model
 
 **Where to place the figure (A).** Put the “VAE + Regression Head training loops” diagram here, right after introducing both components.
 
-![VAE and Regression Head Training Loops](figures/vae_regression_training_loop.svg)
+![VAE and Regression Head Training Loops](figures/vae_regression_training_loop.svg#gh-light-mode-only)
+![VAE and Regression Head Training Loops](figures/vae_regression_training_loop_dark.svg#gh-dark-mode-only)
 
 ______________________________________________________________________
 
@@ -63,7 +64,9 @@ where (\\theta) denotes **both** U-Net and CondEnc parameters.
 
 **Where to place the figure (B).** Put the “full LDM training loop (partial diffusion + conditioning)” diagram here, after describing partial diffusion + CondEnc.
 
-![LDM Training Loop (Partial Diffusion + Conditioning)](figures/ldm_training_loop.svg)
+![LDM Training Loop (Partial Diffusion + Conditioning)](figures/ldm_training_loop.svg#gh-light-mode-only)
+![LDM Training Loop (Partial Diffusion + Conditioning)](figures/ldm_training_loop_dark.svg#gh-dark-mode-only)
+
 
 ______________________________________________________________________
 
