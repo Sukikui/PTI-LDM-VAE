@@ -28,6 +28,18 @@ RAM cache for datasets and disk cache for latent analysis, including invalidatio
 
 How to enable/disable logging, set env vars, and run in offline mode.
 
-### 8. [`docs/reproducibility.md`](reproducibility.md)
+### 8. [`docs/architecture.md`](architecture.md)
 
-Seeds, version pinning, and practical determinism tips.
+Method overview, training stages, and conditioning design.
+
+### 9. [`docs/models/vae.md`](models/vae.md)
+
+VAE training/inference/evaluation commands, outputs, and config keys.
+
+### 10. [`docs/models/regression_head.md`](models/regression_head.md)
+
+Regression head usage, outputs, and configuration details.
+
+### 11. [`docs/models/ldm.md`](models/ldm.md)
+
+LDM training/sampling workflow, outputs, and related scripts.

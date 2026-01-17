@@ -214,11 +214,12 @@ def process_dataset(config: MaskMetricsConfig) -> tuple[dict[str, dict[str, int]
                 attrs_edente[f"width_{idx}"] = int(value)
             attributes_edente[edente_files[stem].name] = attrs_edente
 
+            _, _, _, bbox_h_dente = compute_bbox(de_mask)
             mask_height = int(de_mask.shape[0])
             row_indices = [max(0, min(mask_height - 1, mask_height - 1 - offset)) for offset in dente_offsets]
             widths_dente = [compute_dente_width(de_mask, row) for row in row_indices]
 
-            attrs_dente = {"height_0": int(bbox_height_px)}
+            attrs_dente = {"height_0": int(bbox_h_dente)}
             for idx, value in enumerate(widths_dente):
                 attrs_dente[f"width_{idx}"] = int(value)
             attributes_dente[dente_files[stem].name] = attrs_dente

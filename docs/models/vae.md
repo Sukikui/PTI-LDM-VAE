@@ -6,13 +6,24 @@ Shared helpers live in `pti_ldm_vae_v2/common`, and shared model definitions liv
 
 ## Entry Points
 
-The wrappers in `vae_scripts/` call these modules:
+Train, inference, and evaluation entry points:
 
 ```bash
-python vae_scripts/train_vae.py -c config/vae_both_no_adv.json
-python vae_scripts/inference_vae.py -c config/vae_both_no_adv.json --checkpoint runs/vae_both_no_adv/trained_weights/autoencoder_last.pt --input-dir data/test/edente
-python vae_scripts/evaluate_vae.py -c config/vae_both_no_adv.json --checkpoint runs/vae_both_no_adv/trained_weights/autoencoder_last.pt --input-dir data/test/edente
+python -m pti_ldm_vae_v2.vae.train -c config/vae_both_no_adv.json
+python -m pti_ldm_vae_v2.vae.infer \
+  -c config/vae_both_no_adv.json \
+  --checkpoint runs/vae_both_no_adv/trained_weights/autoencoder_last.pt \
+  --input-dir data/test/edente
+python -m pti_ldm_vae_v2.vae.eval \
+  -c config/vae_both_no_adv.json \
+  --checkpoint runs/vae_both_no_adv/trained_weights/autoencoder_last.pt \
+  --input-dir data/test/edente
 ```
+
+Checkpoints can be either:
+- `autoencoder_last.pt` (latest)
+- `autoencoder_epoch*.pth` (best epoch)
+- `checkpoint_epoch*.pth` (full checkpoint with optimizer state)
 
 Interactive latent analysis (implemented in `pti_ldm_vae_v2/analysis`, runs a local Dash app):
 
@@ -132,6 +143,10 @@ Files:
 - `results_tif/` (original | reconstruction, concatenated)
 - `results_png/` (display-normalized)
 
+Notes:
+- Filenames are sequential (`image0000.tif`, `image0000.png`) rather than input filenames.
+- Ordering follows the sorted input list from `data/<source>/`.
+
 If `--output-dir` is provided, the outputs go there instead.
 
 ### Evaluation
@@ -149,12 +164,8 @@ Default output:
 Project layout (VAE only):
 
 ```
-pti-ldm-vae/
+PTI-LDM-VAE/
 ├─ src/pti_ldm_vae_v2/vae/           # VAE code (train/infer/eval + helpers)
-├─ vae_scripts/
-│  ├─ train_vae.py
-│  ├─ inference_vae.py
-│  └─ evaluate_vae.py
 └─ config/
    └─ *.json                       # configs; each one sets run_dir
 ```
@@ -210,29 +221,3 @@ Evaluation outputs (default):
 ```
 
 If `--output-dir` is passed for inference or evaluation, results go there instead.
-
-## Key Config Fields
-
-Minimum config keys used by this module:
-
-- `run_dir`
-- `data_base_dir`, `data_source`, `train_split`, `val_dir`
-- `autoencoder_def` (architecture)
-- `autoencoder_train`:
-  - `batch_size`, `lr`, `max_epochs`, `patch_size`
-  - `subset_size` (optional, limits the number of training samples)
-  - `recon_loss`, `kl_weight`, `perceptual_weight`
-  - `adv_enabled`, `adv_weight` (GAN branch)
-  - `ar_vae_enabled`, `ar_vae_weight` (AR-VAE)
-  - `val_interval`
-- `spatial_dims`
-- `regularized_attributes` (only if AR-VAE is enabled)
-- `wandb` (if logging is enabled)
-
-Notes:
-- `regularized_attributes.attribute_file` can be a single JSON path or a mapping `{ "edente": "...", "dente": "..." }`.
-  If `data_source` is `both` and a single path is provided, it is reused for both sources.
-
-## Defaults
-
-- `DEFAULT_NUM_WORKERS = 4` in `pti_ldm_vae_v2/common/runtime.py` (internal only, not a CLI arg).

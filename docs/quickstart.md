@@ -32,10 +32,10 @@ python -m pti_ldm_vae_v2.regression_head.train -c config/nreg_edente_from_both.j
 ## 4. Train the LDM
 
 This config expects both the VAE and regression head checkpoints:
-`config/ldm_both_no_adv.json` → `vae.checkpoint` and `regressor.checkpoint`.
+`config/ldm_both_no_adv_metrics_only_noisy.json` → `vae.checkpoint` and `regressor.checkpoint`.
 
 ```bash
-python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv.json
+python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv_metrics_only_noisy.json
 ```
 
 > [!NOTE]
@@ -45,8 +45,8 @@ python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv.json
 
 ```bash
 python -m pti_ldm_vae_v2.ldm.sample \
-  -c config/ldm_both_no_adv.json \
-  --checkpoint runs/ldm_both_no_adv/trained_weights/ldm_unet_best.pth \
+  -c config/ldm_both_no_adv_metrics_only_noisy.json \
+  --checkpoint runs/ldm_both_no_adv_metrics_only_noisy/trained_weights/ldm_unet_best.pth \
   --input-dir data/test/dente \
   --num-steps 1000
 ```
@@ -88,7 +88,7 @@ If you just want to validate the pipeline, run fewer epochs:
 ```bash
 python -m pti_ldm_vae_v2.vae.train -c config/vae_both_no_adv.json --max-epochs 1
 python -m pti_ldm_vae_v2.regression_head.train -c config/nreg_edente_from_both.json --max-epochs 1
-python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv.json --max-epochs 1
+python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv_metrics_only_noisy.json --max-epochs 1
 ```
 
 For config structure and outputs, see:

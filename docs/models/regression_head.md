@@ -6,12 +6,18 @@ Shared helpers live in `pti_ldm_vae_v2/common`, and shared model definitions liv
 
 ## Entry Points
 
-The wrappers in `reg_scripts/` call these modules:
+Train, inference, and evaluation entry points:
 
 ```bash
-python reg_scripts/train_regression.py -c config/reg_edente_from_dente.json
-python reg_scripts/inference_regression.py -c config/reg_edente_from_dente.json --checkpoint runs/reg_head_edente/trained_weights/head_last.pth --input-dir data/test/edente
-python reg_scripts/evaluate_regression.py -c config/reg_edente_from_dente.json --checkpoint runs/reg_head_edente/trained_weights/head_last.pth --input-dir data/test/edente
+python -m pti_ldm_vae_v2.regression_head.train -c config/nreg_edente_from_both.json
+python -m pti_ldm_vae_v2.regression_head.infer \
+  -c config/nreg_edente_from_both.json \
+  --checkpoint runs/nreg_edente_from_both/trained_weights/head_last.pth \
+  --input-dir data/test/edente
+python -m pti_ldm_vae_v2.regression_head.eval \
+  -c config/nreg_edente_from_both.json \
+  --checkpoint runs/nreg_edente_from_both/trained_weights/head_last.pth \
+  --input-dir data/test/edente
 ```
 
 ## CLI Arguments
@@ -22,7 +28,7 @@ python reg_scripts/evaluate_regression.py -c config/reg_edente_from_dente.json -
 - `--batch-size` (optional override)
 - `--lr` (optional override)
 - `--max-epochs` (optional override)
-- `--seed` (optional override)
+- `--seed` (optional override, default: `None`)
 - `--resume-checkpoint` (optional checkpoint)
 
 ### Inference
@@ -32,15 +38,15 @@ python reg_scripts/evaluate_regression.py -c config/reg_edente_from_dente.json -
 - `--input-dir` (required)
 - `--output-dir` (optional override)
 - `--num-samples` (optional cap)
-- `--batch-size` (default: from config)
+- `--batch-size` (default: `regression_train.batch_size` from config)
 - `--seed` (default: 42)
 
 ### Evaluation
 
 - `-c, --config-file` (required)
 - `--checkpoint` (required)
-- `--input-dir` (optional override; defaults to evaluation.data_base_dir)
-- `--attributes-path` (optional override)
+- `--input-dir` (optional override; defaults to `evaluation.data_base_dir`)
+- `--attributes-path` (optional override; defaults to `evaluation.attributes_path`)
 - `--output-dir` (optional override)
 - `--num-samples` (optional cap)
 - `--batch-size` (default: from config)
@@ -67,6 +73,8 @@ Default output root:
 Files:
 - `predictions.json` (mapping filename -> {target: value})
 
+Predictions are keyed by the **input filename** (not an index).
+
 ### Evaluation
 
 Default output:
@@ -82,14 +90,10 @@ Default output:
 Project layout (regression head only):
 
 ```
-pti-ldm-vae/
-|-- src/pti_ldm_vae_v2/regression_head/   # regression head code
-|-- reg_scripts/
-|   |-- train_regression.py
-|   |-- inference_regression.py
-|   `-- evaluate_regression.py
-`-- config/
-    `-- *.json                          # configs; each one sets run_dir
+PTI-LDM-VAE/
+├─ src/pti_ldm_vae_v2/regression_head/   # regression head code
+└─ config/
+   └─ *.json                           # configs; each one sets run_dir
 ```
 
 Shared helpers: `src/pti_ldm_vae_v2/common/`.
@@ -115,17 +119,3 @@ Run layout (created under `run_dir` from the config):
 ```
 
 If `--output-dir` is passed for inference or evaluation, results go there instead.
-
-## Key Config Fields
-
-Minimum config keys used by this module:
-
-- `run_dir`
-- `data`: `data_base_dir`, `attributes_path`, `data_source`, `train_split`, `val_dir`, `patch_size`, `cache_rate`,
-  `num_workers`, `seed`, `subset_size`, `normalize_attributes`
-- `evaluation`: `data_base_dir`, `attributes_path`, `data_source`, `patch_size`, `num_workers`, `normalize_attributes`
-- `vae`: `config_file`, `checkpoint`
-- `targets`
-- `regressor_def`: `hidden_dims`, `dropout`, `activation`
-- `regression_train`: `batch_size`, `lr`, `max_epochs`, `val_interval`, `target_norm`, `loss`, `weight_decay`
-- `wandb` (if logging is enabled)

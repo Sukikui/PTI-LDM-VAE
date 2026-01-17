@@ -171,8 +171,8 @@ def save_results(
     for i, src_path in enumerate(input_paths):
         filename = Path(src_path).name
         stem = Path(src_path).stem
-        triplet = torch.cat([dentate_cpu[i], edente_cpu[i], outputs_cpu[i]], dim=2).numpy()
-        tifffile.imwrite(out_tif / filename, triplet)
+        rotated_pred = torch.rot90(outputs_cpu[i], k=3, dims=[1, 2])
+        tifffile.imwrite(out_tif / filename, rotated_pred[0].numpy())
 
         png_triplet = torch.cat([disp_dentate[i], disp_edente[i], disp_generated[i]], dim=2)[0].numpy()
         png_uint8 = (png_triplet * 255).astype("uint8")
@@ -338,7 +338,8 @@ def main() -> None:
         )
         save_results(generated, batch, edente_batch, batch_paths, out_tif, out_png)
         for i, src_path in enumerate(batch_paths):
-            metrics, is_empty = _compute_pred_metrics(generated[i], width_samples=width_samples)
+            rotated_pred = torch.rot90(generated[i], k=3, dims=[1, 2])
+            metrics, is_empty = _compute_pred_metrics(rotated_pred, width_samples=width_samples)
             pred_metrics[Path(src_path).name] = metrics
             if is_empty:
                 empty_masks += 1

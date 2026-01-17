@@ -83,4 +83,8 @@ Metrics can be generated with:
 python -m pti_ldm_vae_v2.tools.compute_mask_metrics
 ```
 
-See [`src/pti_ldm_vae_v2/tools/README.md`](../src/pti_ldm_vae_v2/tools/README.md) for details.
+Quickly preview a single `.tif` (keeps background black):
+
+```
+python -m pti_ldm_vae_v2.tools.view_tif --input-path data/test/dente/example.tif
+```

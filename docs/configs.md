@@ -61,7 +61,7 @@ Example:
 - `diffusion.num_train_timesteps`
 - `train.batch_size`, `train.lr`, `train.max_epochs`
 
-Example: [`config/ldm_both_no_adv.json`](../config/ldm_both_no_adv.json)
+Example: [`config/ldm_both_no_adv_metrics_only_noisy.json`](../config/ldm_both_no_adv_metrics_only_noisy.json)
 
 ## 4. Interactions and gotchas (from code)
 These details come directly from how the code reads configs:
@@ -99,7 +99,7 @@ If it does not match your real image size, the regressor can break at runtime.
 When you use `noise_init`, the best way to pick `noise_weight` is to use the visualization tool:
 ```
 python -m pti_ldm_vae_v2.analysis.visualize_noisy_latent \
-  -c config/ldm_both_no_adv.json \
+  -c config/ldm_both_no_adv_metrics_only_noisy.json \
   --input-path data/train_val/dente/<file>.tif \
   --scale-factor <value>
 ```

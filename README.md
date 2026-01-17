@@ -40,7 +40,7 @@ Follow `docs/setup.md`, then:
 ```bash
 python -m pti_ldm_vae_v2.vae.train -c config/vae_both_no_adv.json
 python -m pti_ldm_vae_v2.regression_head.train -c config/nreg_edente_from_both.json
-python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv.json
+python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv_metrics_only_noisy.json
 ```
 
 For sampling and metric plots, see `docs/quickstart.md`.

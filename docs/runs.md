@@ -75,8 +75,8 @@ runs/<ldm_run>/
 ```
 
 > [!NOTE]
-> - `results_tif/` stores `dentate | edentulous_gt | edentulous_pred` concatenated.  
-> - `results_png/` uses display-normalized images.
+> - `results_tif/` stores the predicted edentulous image only, rotated 90° clockwise.  
+> - `results_png/` shows `dentate | edentulous_gt | edentulous_pred` concatenated (display-normalized).
 > - `attributes_edente_pred.json` mirrors the `compute_mask_metrics` schema for predicted edentulous masks.
 
 ## 6. Output overrides
