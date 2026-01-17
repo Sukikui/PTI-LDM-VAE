@@ -100,9 +100,9 @@ An arrow `A → B` means: **A is trained using B as a frozen dependency** (i.e.,
 
 ```mermaid
 flowchart BT
-  VAE["VAE\nvae_both_no_adv.json"]
-  RH["Regression Head\nnreg_edente_from_both.json"]
-  LDM["LDM\nldm_both_no_adv_metrics_only_noisy.json"]
+  VAE["VAE<br>vae_both_no_adv.json"]
+  RH["Regression Head<br>nreg_edente_from_both.json"]
+  LDM["LDM<br>ldm_both_no_adv_metrics_only_noisy.json"]
 
   RH -->|trained using frozen| VAE
   LDM -->|trained using frozen| VAE
