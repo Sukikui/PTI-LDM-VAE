@@ -1,8 +1,12 @@
+<div align="center">
+
 # PTI-LDM-VAE
 
 A clean, reproducible pipeline to predict **edentulous sagittal CBCT slices** from **dentate inputs** using a VAE, a regression head, and a conditioned latent diffusion model (LDM).
 
 <img src="docs/figures/sample.png" width="500">
+
+</div>
 
 ## Pipeline at a glance
 
@@ -33,7 +37,7 @@ A clean, reproducible pipeline to predict **edentulous sagittal CBCT slices** fr
 - [`docs/wandb.md`](docs/wandb.md): Logging configuration and offline mode.
 - [`docs/architecture.md`](docs/architecture.md): Detailed method description.
 
-## Quickstart (short)
+## Quickstart
 
 Follow `docs/setup.md`, then:
 
@@ -45,10 +49,12 @@ python -m pti_ldm_vae_v2.ldm.train -c config/ldm_both_no_adv_metrics_only_noisy.
 
 For sampling and metric plots, see `docs/quickstart.md`.
 
-## Architecture (condensed)
+## Architecture
 
-A full description lives in [`docs/architecture.md`](docs/architecture.md). The figure below shows the
-LDM training loop used in this project.
+A full description lives in [`docs/architecture.md`](docs/architecture.md). In short, the VAE compresses
+each 256×256 slice into a spatial latent, the regression head predicts six edentulous geometry metrics
+from dentate latents, and the LDM denoises in latent space while conditioning on those metrics
+(optionally also on dentate latents). The figure below shows the LDM training loop used in this project.
 
 ![LDM Training Loop (Partial Diffusion + Conditioning)](docs/figures/ldm_training_loop.svg#gh-light-mode-only)
 ![LDM Training Loop (Partial Diffusion + Conditioning)](docs/figures/ldm_training_loop_dark.svg#gh-dark-mode-only)
