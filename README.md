@@ -2,6 +2,8 @@
 
 A clean, reproducible pipeline to predict **edentulous sagittal CBCT slices** from **dentate inputs** using a VAE, a regression head, and a conditioned latent diffusion model (LDM).
 
+<img src="docs/figures/sample.png" width="60%">
+
 ## Pipeline at a glance
 
 1. **VAE** compresses each 256×256 slice into a spatial latent.
@@ -136,9 +138,9 @@ This section clarifies what flows through the pipeline and what is optimized at 
 ### D) Selected configs
 
 **Selected pipeline configs**
-- **VAE**: `vae_both_no_adv.json`
-- **Regression Head**: `nreg_edente_from_both.json`
-- **LDM**: `ldm_both_no_adv_metrics_only_noisy.json`
+- **VAE**: [`vae_both_no_adv.json`](./config/vae_both_no_adv.json)
+- **Regression Head**: [`nreg_edente_from_both.json`](./config/nreg_edente_from_both.json)
+- **LDM**: [`ldm_both_no_adv_metrics_only_noisy.json`](./config/ldm_both_no_adv_metrics_only_noisy.json)
 
 ```mermaid
 flowchart BT
