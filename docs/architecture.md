@@ -88,20 +88,28 @@ This section clarifies what flows through the pipeline and what is optimized at 
 
 ---
 
-### D) Selected models (configs used in this repo)
+### D) Selected configs + training dependencies
 
-The final experiments and main pipeline are driven by the following configuration files:
+**Selected pipeline configs**
+- **VAE**: `vae_both_no_adv.json`
+- **Regression Head**: `nreg_edente_from_both.json`
+- **LDM**: `ldm_both_no_adv_metrics_only_noisy.json`
 
-- **VAE (latent space backbone):** `vae_both_no_adv.json`
-- **Regression head (metrics prediction):** `nreg_edente_from_both.json`
-- **LDM (partial diffusion + metrics conditioning):** `ldm_both_no_adv_metrics_only_noisy.json`
+**Arrow meaning (training dependency)**  
+An arrow `A → B` means: **A is trained using B as a frozen dependency** (i.e., B provides latents/conditioning/decoding but its weights are not updated while training A).
 
 ```mermaid
 flowchart BT
-  LDM[LDM] --> RH[Regression Head]
-  LDM --> VAE[VAE]
-  RH --> VAE
+  %% Nodes = selected configs
+  VAE["VAE<br/><code>vae_both_no_adv.json</code>"]
+  RH["Regression Head<br/><code>nreg_edente_from_both.json</code>"]
+  LDM["LDM<br/><code>ldm_both_no_adv_metrics_only_noisy.json</code>"]
 
-  classDef box fill:#ffffff,stroke:#777,stroke-width:4px,rx:12,ry:12,color:#333,font-size:22px;
-  class VAE,RH,LDM box;
+  %% Training dependencies (A → B means: train A with B frozen)
+  RH -->|uses frozen encoder| VAE
+  LDM -->|uses frozen VAE (latent space + decoder)| VAE
+  LDM -->|uses frozen metrics head (conditioning)| RH
+
+  classDef box fill:#ffffff,stroke:#777,stroke-width:4px,rx:12,ry:12,color:#333,font-size:18px;
+  class VAE,RH,LDM box; VAE,RH,LDM box;
 ```
