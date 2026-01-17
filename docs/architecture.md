@@ -100,16 +100,11 @@ An arrow `A → B` means: **A is trained using B as a frozen dependency** (i.e.,
 
 ```mermaid
 flowchart BT
-  %% Nodes = selected configs
-  VAE["VAE<br/><code>vae_both_no_adv.json</code>"]
-  RH["Regression Head<br/><code>nreg_edente_from_both.json</code>"]
-  LDM["LDM<br/><code>ldm_both_no_adv_metrics_only_noisy.json</code>"]
+  VAE["VAE\nvae_both_no_adv.json"]
+  RH["Regression Head\nnreg_edente_from_both.json"]
+  LDM["LDM\nldm_both_no_adv_metrics_only_noisy.json"]
 
-  %% Training dependencies (A → B means: train A with B frozen)
-  RH -->|uses frozen encoder| VAE
-  LDM -->|uses frozen VAE (latent space + decoder)| VAE
-  LDM -->|uses frozen metrics head (conditioning)| RH
-
-  classDef box fill:#ffffff,stroke:#777,stroke-width:4px,rx:12,ry:12,color:#333,font-size:18px;
-  class VAE,RH,LDM box; VAE,RH,LDM box;
+  RH -->|trained using frozen| VAE
+  LDM -->|trained using frozen| VAE
+  LDM -->|trained using frozen| RH
 ```
