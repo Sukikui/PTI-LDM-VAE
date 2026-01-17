@@ -55,6 +55,32 @@ python -m pti_ldm_vae_v2.ldm.sample \
 > The sampler looks for `data/test/edente` by default. Use `--edente-dir` if your path differs.
 > Results are stored under `runs/ldm_both_no_adv/results/<input_dir_relative>/`.
 
+## 6. Plot metric ratios (optional)
+
+Compute test metrics (if you do not have them yet):
+
+```bash
+python -m pti_ldm_vae_v2.tools.compute_mask_metrics \
+  --edente-dir data/test/edente \
+  --dente-dir data/test/dente \
+  --output-edente data/test/metrics/attributes_edente.json \
+  --output-dente data/test/metrics/attributes_dente.json
+```
+
+Then plot all metrics as a 2x3 scatter grid (x = edente/dente, y = pred/edente by default):
+
+```bash
+python -m pti_ldm_vae_v2.analysis.plot_metric_ratios \
+  --edente-metrics data/test/metrics/attributes_edente.json \
+  --dente-metrics data/test/metrics/attributes_dente.json \
+  --pred-metrics runs/ldm_both_no_adv_metrics_only_noisy/metrics/data/test/dente/attributes_edente_pred.json
+```
+
+> [!NOTE]
+> The plot is saved next to the prediction metrics as `metric_scatter_grid.html`.
+> Use `--metric height_0` to plot a single metric in a 1x1 figure.
+> Use `--y-mode diff` to plot ê-e instead of ê/e.
+
 ## Optional: quick smoke test
 
 If you just want to validate the pipeline, run fewer epochs:
