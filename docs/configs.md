@@ -88,14 +88,7 @@ So the real driver is the VAE latent size + `conditioning.concat_dentate`.
 ### 4.4 LDM: `use_dentate_latent` forces `concat_dentate`
 If `conditioning.use_dentate_latent` is `false`, the code forces `concat_dentate` to `false`.
 
-### 4.5 LDM: `patch_size` matters for the regression head
-LDM data is **not resized**, but `data.patch_size` is still used to build the regression head latent shape.
-If it does not match your real image size, the regressor can break at runtime.
-
-> [!NOTE]
-> Set `data.patch_size` to the actual image size used by LDM inputs.
-
-### 4.6 LDM: Choosing `noise_init.noise_weight`
+### 4.5 LDM: Choosing `noise_init.noise_weight`
 When you use `noise_init`, the best way to pick `noise_weight` is to use the visualization tool:
 ```
 python -m pti_ldm_vae_v2.analysis.visualize_noisy_latent \
