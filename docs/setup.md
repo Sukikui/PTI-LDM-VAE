@@ -8,7 +8,7 @@ For logging details, see [`docs/wandb.md`](wandb.md).
 - Python `3.11` (matches `pyproject.toml`).
 - GPU optional. CPU works for quick tests, but training is slow.
 
-## Option A: uv (recommended)
+## Installation with uv
 
 Install `uv` if needed: https://docs.astral.sh/uv/
 
@@ -36,18 +36,6 @@ Notes:
 
 - `uv` reads `pyproject.toml` and uses `uv.lock` when available.
 - This is the most reproducible path.
-
-## Option B: conda
-
-```bash
-conda env create -f environment.yml
-conda activate PTI-LDM-VAE
-```
-
-Notes:
-
-- The conda file installs the default PyPI Torch build.
-- For CUDA, reinstall Torch/TorchVision from the correct CUDA wheel after the env is created.
 
 ## W&B
 
