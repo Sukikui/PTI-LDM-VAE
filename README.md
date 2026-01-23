@@ -2,7 +2,7 @@
 
 # PTI-LDM-VAE
 
-A clean, reproducible pipeline to predict **edentulous sagittal CBCT slices** from **dentate inputs** using a VAE, a regression head, and a conditioned latent diffusion model (LDM).
+Reproducible pipeline to predict **edentulous sagittal CBCT slices** from **dentate inputs** using a VAE, a regression head, and a conditioned latent diffusion model (LDM).
 
 <img src="docs/figures/sample.png" width="500">
 
